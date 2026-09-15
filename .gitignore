@@ -1,0 +1,6 @@
+.vercel
+node_modules
+.DS_Store
+assets/samples
+assets/mixes
+assets/sheets

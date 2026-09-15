@@ -1,0 +1,11 @@
+{
+  "name": "max-cheer-music",
+  "private": true,
+  "scripts": {
+    "dev": "node server.js",
+    "deploy": "vercel --prod"
+  },
+  "devDependencies": {
+    "vercel": "^59.17.0"
+  }
+}

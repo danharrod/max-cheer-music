@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Contact — MAX Cheer Music</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Anton&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="css/max.css" />
+</head>
+<body data-page="contact">
+  <main>
+    <section class="section">
+      <div class="wrap contact-block">
+        <div>
+          <h2>Contact us</h2>
+          <p class="lede">Questions about a mix? Tell us the team, level, and timing and we’ll get back to you.</p>
+        </div>
+        <form action="mailto:maxcheermusic@gmail.com" method="post" enctype="text/plain">
+          <div>
+            <label>First name <span>(required)</span></label>
+            <input name="first" required />
+          </div>
+          <div>
+            <label>Last name <span>(required)</span></label>
+            <input name="last" required />
+          </div>
+          <div class="full">
+            <label>Email <span>(required)</span></label>
+            <input type="email" name="email" required />
+          </div>
+          <div class="full">
+            <label>Message <span>(required)</span></label>
+            <textarea name="message" required></textarea>
+          </div>
+          <div class="full">
+            <button class="btn" type="submit">Send</button>
+          </div>
+        </form>
+      </div>
+    </section>
+  </main>
+  <script src="js/cart.js"></script>
+  <script src="js/site.js"></script>
+</body>
+</html>

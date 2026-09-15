@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Checkout — MAX Cheer Music</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Anton&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="css/max.css" />
+</head>
+<body data-page="checkout">
+  <main>
+    <section class="page-hero wrap">
+      <p class="kicker">Checkout</p>
+      <h1 class="page-title">Order details</h1>
+    </section>
+    <section class="section" style="padding-top:8px">
+      <div class="wrap checkout-grid">
+        <form id="order-form" class="order-form">
+          <div class="full">
+            <label>Gym or school name <span>(required)</span></label>
+            <input name="gym" required />
+          </div>
+          <div class="full">
+            <p class="field-label">Coach name</p>
+          </div>
+          <div>
+            <label>First name <span>(required)</span></label>
+            <input name="coachFirst" required />
+          </div>
+          <div>
+            <label>Last name <span>(required)</span></label>
+            <input name="coachLast" required />
+          </div>
+          <div class="full">
+            <label>Email <span>(required)</span></label>
+            <input type="email" name="email" required />
+          </div>
+          <div class="full">
+            <label>Desired music completion date <span>(required)</span></label>
+            <p class="hint">Date will be confirmed by email once order is placed.</p>
+            <input type="date" name="completionDate" required />
+          </div>
+          <div class="full">
+            <label>Team name <span>(required)</span></label>
+            <input name="teamName" required />
+          </div>
+          <div class="full">
+            <label>Team colors <span>(required)</span></label>
+            <input name="teamColors" required />
+          </div>
+          <div class="full">
+            <label>Voiceover ideas <span>(required)</span></label>
+            <p class="hint">Please include any themes, saying, or ideas you would like in the music for our custom sections of the music.</p>
+            <textarea name="voiceover" required></textarea>
+          </div>
+          <div class="full">
+            <label>Portal password <span>(required)</span></label>
+            <p class="hint">Use this password to log in later, see your order, and download your mix.</p>
+            <input type="password" name="password" minlength="6" required />
+          </div>
+          <div class="full">
+            <label>PO number <span>(optional)</span></label>
+            <p class="hint">If you’re paying with a school purchase order, add the PO number if you have it.</p>
+            <input name="poNumber" />
+          </div>
+          <div class="full next-step">
+            <p class="field-label">Next step</p>
+            <p class="hint">Please visit <a href="https://songsforcheer.com" target="_blank" rel="noreferrer">songsforcheer.com</a> and choose 5 songs. After you pay, log in to the Portal to type those song names and upload your count sheet PDF. Mix work starts after those are in.</p>
+          </div>
+        </form>
+
+        <aside class="checkout-summary">
+          <h2>Your order</h2>
+          <div id="checkout-lines"></div>
+          <p class="cart-total" id="checkout-total"></p>
+          <p class="hint">Pay with Venmo, PayPal, or a school purchase order after you fill out the order details.</p>
+          <button class="btn pay paypal" type="button" id="pay-paypal">Pay with PayPal</button>
+          <button class="btn pay venmo" type="button" id="pay-venmo">Pay with Venmo</button>
+          <button class="btn pay po" type="button" id="pay-po">Pay with school PO</button>
+          <p class="hint" id="pay-status"></p>
+        </aside>
+      </div>
+    </section>
+  </main>
+  <script src="js/cart.js"></script>
+  <script src="js/site.js"></script>
+  <script src="js/checkout.js"></script>
+</body>
+</html>

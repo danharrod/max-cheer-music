@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Customer portal — MAX Cheer Music</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Anton&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="css/max.css" />
+</head>
+<body data-page="portal">
+  <main>
+    <section class="page-hero wrap">
+      <p class="kicker">Account</p>
+      <h1 class="page-title">Portal</h1>
+      <p class="lede">Log in to see your order details and download your mix when it’s ready.</p>
+    </section>
+    <section class="section" style="padding-top:0">
+      <div class="wrap">
+        <form id="portal-login" class="order-form">
+          <div class="full">
+            <label>Email</label>
+            <input type="email" name="email" required />
+          </div>
+          <div class="full">
+            <label>Password</label>
+            <input type="password" name="password" required />
+          </div>
+          <div class="full">
+            <button class="btn" type="submit">Log in</button>
+            <p class="hint" id="portal-status">Create a portal password when you check out.</p>
+          </div>
+        </form>
+        <div id="portal-app" hidden></div>
+      </div>
+    </section>
+  </main>
+  <script src="js/cart.js"></script>
+  <script src="js/site.js"></script>
+  <script src="js/portal.js?v=songs"></script>
+</body>
+</html>

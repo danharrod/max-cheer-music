@@ -1,0 +1,47 @@
+{
+  "settings": {
+    "paypalMe": "danharrod12",
+    "venmo": "daniel-harrod-3",
+    "email": "maxcheermusic@gmail.com"
+  },
+  "products": [
+    {
+      "id": "school",
+      "name": "School team",
+      "title": "Cheer mix school",
+      "price": 750,
+      "description": "School team mix built for game day, pep rallies, and competition — sized to your routine.",
+      "sampleUrl": "",
+      "active": true
+    },
+    {
+      "id": "novice",
+      "name": "Allstar novice",
+      "title": "Cheer mix novice",
+      "price": 600,
+      "description": "Novice mix that still hits. Clear counts, strong energy, and a crowd-ready finish.",
+      "sampleUrl": "",
+      "active": true
+    },
+    {
+      "id": "prep",
+      "name": "Allstar prep",
+      "title": "Cheer mix prep",
+      "price": 700,
+      "description": "All-star prep mix with the same punch as elite tracks, cut for prep timing and skill sets.",
+      "sampleUrl": "",
+      "active": true
+    },
+    {
+      "id": "allstar",
+      "name": "Allstar",
+      "title": "Cheer mix allstar",
+      "price": 1100,
+      "description": "Full all-star mix. Competition energy, clean hits, and a mix that stays loud from the first 8-count.",
+      "sampleUrl": "",
+      "active": true
+    }
+  ],
+  "users": [],
+  "orders": []
+}

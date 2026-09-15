@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 360" fill="none">
+  <defs>
+    <linearGradient id="chrome" x1="80" y1="40" x2="560" y2="320">
+      <stop offset="0" stop-color="#d7e4ff"/>
+      <stop offset="0.18" stop-color="#6ea0ff"/>
+      <stop offset="0.42" stop-color="#2f6bff"/>
+      <stop offset="0.7" stop-color="#1636c9"/>
+      <stop offset="1" stop-color="#070b22"/>
+    </linearGradient>
+  </defs>
+  <text x="320" y="230" text-anchor="middle" font-family="Arial Black, Impact, sans-serif" font-size="148" font-style="italic" font-weight="900" letter-spacing="-4" stroke="#050404" stroke-width="18" paint-order="stroke fill">PREP</text>
+  <text x="320" y="230" text-anchor="middle" font-family="Arial Black, Impact, sans-serif" font-size="148" font-style="italic" font-weight="900" letter-spacing="-4" fill="url(#chrome)">PREP</text>
+</svg>

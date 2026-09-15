@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>MAX Cheer Music</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Anton&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="css/max.css" />
+</head>
+<body data-page="home">
+  <main>
+    <section class="hero">
+      <div>
+        <p class="kicker">Custom cheer music</p>
+        <h1>Music that hits</h1>
+        <img class="hero-logo" src="assets/max-logo.png" alt="MAX" />
+        <p>All-star, school, prep and novice mixes built for the mat — loud, clean, and competition ready.</p>
+        <div class="hero-actions">
+          <a class="btn btn-rect" href="shop.html">Order now</a>
+          <a class="btn btn-outline btn-rect" href="samples.html">Hear samples</a>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="wrap">
+        <h2>Shop mixes</h2>
+        <div class="mix-grid">
+          <div class="mix-card">
+            <img class="mix-mark" src="assets/mix-school.png" alt="" />
+            <h3>School team</h3>
+            <p class="price">$750</p>
+            <button class="btn" type="button" data-add="school">Add to cart</button>
+          </div>
+          <div class="mix-card">
+            <img class="mix-mark" src="assets/mix-novice.png" alt="" />
+            <h3>Allstar novice</h3>
+            <p class="price">$600</p>
+            <button class="btn" type="button" data-add="novice">Add to cart</button>
+          </div>
+          <div class="mix-card">
+            <img class="mix-mark" src="assets/mix-prep.png" alt="" />
+            <h3>Allstar prep</h3>
+            <p class="price">$700</p>
+            <button class="btn" type="button" data-add="prep">Add to cart</button>
+          </div>
+          <div class="mix-card">
+            <img class="mix-mark" src="assets/mix-allstar.png" alt="" />
+            <h3>Allstar</h3>
+            <p class="price">$1100</p>
+            <button class="btn" type="button" data-add="allstar">Add to cart</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" style="padding-top:0">
+      <div class="wrap split">
+        <div class="prose">
+          <p class="kicker">Music producer</p>
+          <h1>Dan</h1>
+          <p>Custom cheerleading music since 17. Mixes for all-star programs, school squads, college teams, and international groups — built to hit hard and keep the crowd hyped.</p>
+          <p><a class="btn" href="about.html">About</a></p>
+        </div>
+        <div class="panel">
+          <img src="assets/max-logo.png" alt="MAX" />
+        </div>
+      </div>
+    </section>
+
+    <section class="section" style="padding-top:0">
+      <div class="wrap contact-block">
+        <div>
+          <h2>Contact us</h2>
+          <p class="lede">Interested in working together? Fill out some info and we will be in touch shortly.</p>
+        </div>
+        <form action="mailto:maxcheermusic@gmail.com" method="post" enctype="text/plain">
+          <div>
+            <label>First name <span>(required)</span></label>
+            <input name="first" required />
+          </div>
+          <div>
+            <label>Last name <span>(required)</span></label>
+            <input name="last" required />
+          </div>
+          <div class="full">
+            <label>Email <span>(required)</span></label>
+            <input type="email" name="email" required />
+          </div>
+          <div class="full">
+            <label>Message <span>(required)</span></label>
+            <textarea name="message" required></textarea>
+          </div>
+          <div class="full">
+            <button class="btn" type="submit">Send</button>
+          </div>
+        </form>
+      </div>
+    </section>
+  </main>
+  <script src="js/cart.js"></script>
+  <script src="js/site.js"></script>
+</body>
+</html>

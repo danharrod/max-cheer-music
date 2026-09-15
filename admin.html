@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Admin — MAX Cheer Music</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Anton&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="css/max.css" />
+</head>
+<body data-page="admin">
+  <main class="wrap admin-page">
+    <section class="page-hero">
+      <p class="kicker">Staff</p>
+      <h1 class="page-title">Admin</h1>
+    </section>
+
+    <form id="login-card" class="order-form">
+      <label>Password</label>
+      <input id="admin-pass" type="password" autocomplete="current-password" />
+      <p class="hint" id="login-status">Staff login for prices, samples, and orders.</p>
+      <button class="btn" type="submit" id="admin-login">Log in</button>
+    </form>
+
+    <section id="admin-app" hidden>
+      <p class="admin-toolbar">
+        <button class="btn btn-outline" type="button" id="admin-logout">Log out</button>
+      </p>
+      <div class="admin-tabs">
+        <button type="button" class="btn is-on" data-tab="products">Products</button>
+        <button type="button" class="btn btn-outline" data-tab="orders">Orders</button>
+        <button type="button" class="btn btn-outline" data-tab="settings">Settings</button>
+      </div>
+
+      <div class="admin-panel" data-panel="products"></div>
+      <div class="admin-panel" data-panel="orders" hidden></div>
+      <div class="admin-panel" data-panel="settings" hidden></div>
+      <p class="hint" id="admin-status"></p>
+    </section>
+  </main>
+  <script src="js/admin.js"></script>
+</body>
+</html>
