@@ -25,26 +25,80 @@ function fileToBase64(file) {
   });
 }
 
+async function uploadSampleToBlob(file, productId) {
+  const tokenRes = await api({
+    action: "sample-token",
+    productId,
+    filename: file.name,
+  });
+  const params = new URLSearchParams({ pathname: tokenRes.pathname });
+  const headers = {
+    authorization: `Bearer ${tokenRes.clientToken}`,
+    "x-api-version": "12",
+  };
+  if (tokenRes.storeId) headers["x-vercel-blob-store-id"] = tokenRes.storeId;
+  if (file.type) headers["content-type"] = file.type;
+  const putRes = await fetch(`https://vercel.com/api/blob/?${params}`, {
+    method: "PUT",
+    headers,
+    body: file,
+  });
+  const putData = await putRes.json().catch(() => ({}));
+  if (!putRes.ok || !putData.url) {
+    throw new Error(putData.error?.message || putData.error || "Upload failed");
+  }
+  return putData.url;
+}
+
+async function saveSample(productId, { url, sampleName } = {}) {
+  const payload = { action: "sample-save", productId };
+  if (url) payload.url = url;
+  if (sampleName != null) payload.sampleName = sampleName;
+  const data = await api(payload);
+  state = data;
+  if (!url) return;
+  renderProducts();
+  renderOrders();
+  renderSettings();
+}
+
+function esc(s) {
+  return String(s ?? "").replace(/[&<>"']/g, (c) =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])
+  );
+}
+
+function productById(id) {
+  return state.products.find((p) => p.id === id);
+}
+
 function renderProducts() {
   const el = document.querySelector('[data-panel="products"]');
-  el.innerHTML = state.products
-    .map(
-      (p, i) => `
-    <article class="product admin-card">
+  el.innerHTML =
+    `<p><button class="btn" type="button" data-save-products>Save products</button></p>` +
+    state.products
+      .map(
+        (p) => `
+    <article class="product admin-card" data-product="${esc(p.id)}">
+      <h2>${esc(p.name || p.id)}</h2>
       <label>Name</label>
-      <input data-p="${i}" data-k="name" value="${p.name || ""}" />
+      <input data-id="${esc(p.id)}" data-k="name" value="${esc(p.name)}" autocomplete="off" />
       <label>Shop title</label>
-      <input data-p="${i}" data-k="title" value="${p.title || ""}" />
+      <input data-id="${esc(p.id)}" data-k="title" value="${esc(p.title)}" autocomplete="off" />
       <label>Price</label>
-      <input data-p="${i}" data-k="price" type="number" value="${p.price || 0}" />
+      <input data-id="${esc(p.id)}" data-k="price" type="number" min="0" step="1" value="${Number(p.price) || 0}" />
       <label>Description</label>
-      <textarea data-p="${i}" data-k="description">${p.description || ""}</textarea>
+      <textarea data-id="${esc(p.id)}" data-k="description">${esc(p.description)}</textarea>
+      <label>Sample name</label>
+      <input data-id="${esc(p.id)}" data-k="sampleName" value="${esc(p.sampleName || "")}" placeholder="Name that shows on the Samples page" autocomplete="off" />
       <label>Sample audio</label>
-      ${p.sampleUrl ? `<audio controls src="${p.sampleUrl}"></audio>` : `<p class="hint">No sample yet</p>`}
-      <input data-sample="${i}" type="file" accept="audio/*" />
+      ${p.sampleUrl ? `<audio controls src="${esc(p.sampleUrl)}"></audio>` : `<p class="hint">No sample yet</p>`}
+      <p class="hint">Pick an audio file. It goes live on Samples as soon as it finishes.</p>
+      <input data-sample="${esc(p.id)}" type="file" accept="audio/*" />
     </article>`
-    )
-    .join("") + `<p><button class="btn" type="button" id="save-products">Save products</button></p>`;
+      )
+      .join("") +
+    `<p><button class="btn" type="button" data-save-products>Save products</button></p>`;
 }
 
 function renderOrders() {
@@ -97,41 +151,21 @@ function renderSettings() {
     </article>`;
 }
 
-function bindFields() {
-  document.querySelectorAll("[data-p]").forEach((input) => {
-    input.addEventListener("input", () => {
-      const i = Number(input.dataset.p);
-      const k = input.dataset.k;
-      state.products[i][k] = k === "price" ? Number(input.value) : input.value;
-    });
-  });
-  document.querySelectorAll("[data-sample]").forEach((input) => {
-    input.addEventListener("change", async () => {
-      const file = input.files[0];
-      if (!file) return;
-      const data = await fileToBase64(file);
-      const saved = await api({ action: "upload", filename: file.name, data, kind: "samples" });
-      state.products[Number(input.dataset.sample)].sampleUrl = saved.url;
-      setStatus("Sample uploaded. Click Save products.");
-      renderProducts();
-      bindFields();
-    });
-  });
-  document.getElementById("save-products")?.addEventListener("click", saveAll);
-}
-
 async function saveAll() {
   setStatus("Saving…");
-  const data = await api({
-    action: "save",
-    store: { settings: state.settings, products: state.products },
-  });
-  state = data;
-  setStatus("Saved.");
-  renderProducts();
-  renderOrders();
-  renderSettings();
-  bindFields();
+  try {
+    const data = await api({
+      action: "save",
+      store: { settings: state.settings, products: state.products },
+    });
+    state = data;
+    setStatus("Saved.");
+    renderProducts();
+    renderOrders();
+    renderSettings();
+  } catch (err) {
+    setStatus(err.message);
+  }
 }
 
 function setStatus(msg) {
@@ -147,7 +181,6 @@ async function loadApp() {
   renderProducts();
   renderOrders();
   renderSettings();
-  bindFields();
 }
 
 document.addEventListener("DOMContentLoaded", async () => {
@@ -183,6 +216,31 @@ document.addEventListener("DOMContentLoaded", async () => {
   });
 
   document.body.addEventListener("change", async (e) => {
+    const sample = e.target.closest("[data-sample]");
+    if (sample && sample.files[0]) {
+      const file = sample.files[0];
+      const product = productById(sample.dataset.sample);
+      if (!product) return;
+      setStatus("Uploading sample…");
+      try {
+        let url;
+        try {
+          url = await uploadSampleToBlob(file, product.id);
+        } catch {
+          if (file.size > 3.2 * 1024 * 1024) {
+            throw new Error("That file is too large. Use a shorter clip (under 3 MB) or an MP3.");
+          }
+          const data = await fileToBase64(file);
+          const saved = await api({ action: "upload", filename: file.name, data, kind: "samples" });
+          url = saved.url;
+        }
+        await saveSample(product.id, { url, sampleName: product.sampleName || "" });
+        setStatus("Sample is live on the Samples page.");
+      } catch (err) {
+        setStatus(err.message || "Could not upload the sample.");
+      }
+      return;
+    }
     const attach = e.target.closest("[data-attach]");
     if (attach && attach.files[0]) {
       const file = attach.files[0];
@@ -198,7 +256,31 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
   });
 
+  let sampleNameTimer;
+  document.body.addEventListener("input", (e) => {
+    const input = e.target.closest("[data-id][data-k]");
+    if (!input) return;
+    const product = productById(input.dataset.id);
+    if (!product) return;
+    product[input.dataset.k] = input.dataset.k === "price" ? Number(input.value) : input.value;
+    if (input.dataset.k !== "sampleName") return;
+    clearTimeout(sampleNameTimer);
+    sampleNameTimer = setTimeout(async () => {
+      try {
+        await saveSample(product.id, { sampleName: product.sampleName || "" });
+        setStatus("Sample name saved. It shows on the Samples page.");
+      } catch (err) {
+        setStatus(err.message || "Could not save the sample name.");
+      }
+    }, 400);
+  });
+
   document.body.addEventListener("click", async (e) => {
+    if (e.target.closest("[data-save-products]")) {
+      e.preventDefault();
+      await saveAll();
+      return;
+    }
     if (e.target.id === "save-settings") {
       state.settings.paypalMe = document.getElementById("set-paypal").value;
       state.settings.venmo = document.getElementById("set-venmo").value;

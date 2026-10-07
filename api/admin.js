@@ -75,14 +75,17 @@ module.exports = async (req, res) => {
       title: String(p.title || p.name || "").trim(),
       price: Number(p.price) || 0,
       description: String(p.description || ""),
+      sampleName: String(p.sampleName || "").trim(),
       sampleUrl: String(p.sampleUrl || ""),
       active: p.active !== false,
     }));
-    await saveStore(current);
+    const ok = await saveStore(current);
+    if (!ok) return res.status(500).json({ error: "Could not save prices. Storage is not connected." });
+    const saved = await getStore();
     return res.status(200).json({
-      settings: current.settings,
-      products: current.products,
-      orders: (current.orders || []).map(publicOrder).reverse(),
+      settings: saved.settings,
+      products: saved.products,
+      orders: (saved.orders || []).map(publicOrder).reverse(),
     });
   }
 
@@ -91,6 +94,58 @@ module.exports = async (req, res) => {
     const buffer = Buffer.from(body.data, "base64");
     const saved = await saveUpload(body.filename, buffer, body.kind || "samples");
     return res.status(200).json(saved);
+  }
+
+  if (action === "sample-token") {
+    const productId = String(body.productId || "").trim();
+    if (!productId) return res.status(400).json({ error: "Missing product" });
+    const filename = String(body.filename || "sample.mp3");
+    const safe = `${Date.now()}-${filename.replace(/[^a-zA-Z0-9._-]/g, "-")}`;
+    const pathname = `samples/${productId}/${safe}`;
+    const blobToken = process.env.BLOB_READ_WRITE_TOKEN;
+    if (!blobToken) return res.status(500).json({ error: "Storage is not connected." });
+    const { generateClientTokenFromReadWriteToken } = require("@vercel/blob/client");
+    const clientToken = await generateClientTokenFromReadWriteToken({
+      token: blobToken,
+      pathname,
+      addRandomSuffix: false,
+      allowedContentTypes: [
+        "audio/mpeg",
+        "audio/mp3",
+        "audio/wav",
+        "audio/x-wav",
+        "audio/wave",
+        "audio/mp4",
+        "audio/x-m4a",
+        "audio/aac",
+        "audio/ogg",
+        "audio/webm",
+        "application/octet-stream",
+      ],
+      maximumSizeInBytes: 80 * 1024 * 1024,
+    });
+    const storeId = blobToken.split("_")[3] || "";
+    return res.status(200).json({ clientToken, pathname, storeId });
+  }
+
+  if (action === "sample-save") {
+    const productId = String(body.productId || "").trim();
+    const url = String(body.url || "").trim();
+    const hasName = Object.prototype.hasOwnProperty.call(body, "sampleName");
+    if (!productId || (!url && !hasName)) return res.status(400).json({ error: "Missing sample" });
+    const store = await getStore();
+    const product = (store.products || []).find((p) => p.id === productId);
+    if (!product) return res.status(404).json({ error: "Product not found" });
+    if (url) product.sampleUrl = url;
+    if (hasName) product.sampleName = String(body.sampleName || "").trim();
+    const ok = await saveStore(store);
+    if (!ok) return res.status(500).json({ error: "Could not save sample." });
+    const saved = await getStore();
+    return res.status(200).json({
+      settings: saved.settings,
+      products: saved.products,
+      orders: (saved.orders || []).map(publicOrder).reverse(),
+    });
   }
 
   if (action === "attach") {

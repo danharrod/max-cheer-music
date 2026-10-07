@@ -11,6 +11,7 @@
       "title": "Cheer mix school",
       "price": 750,
       "description": "School team mix built for game day, pep rallies, and competition — sized to your routine.",
+      "sampleName": "",
       "sampleUrl": "",
       "active": true
     },
@@ -20,6 +21,7 @@
       "title": "Cheer mix novice",
       "price": 600,
       "description": "Novice mix that still hits. Clear counts, strong energy, and a crowd-ready finish.",
+      "sampleName": "",
       "sampleUrl": "",
       "active": true
     },
@@ -29,6 +31,7 @@
       "title": "Cheer mix prep",
       "price": 700,
       "description": "All-star prep mix with the same punch as elite tracks, cut for prep timing and skill sets.",
+      "sampleName": "",
       "sampleUrl": "",
       "active": true
     },
@@ -38,6 +41,7 @@
       "title": "Cheer mix allstar",
       "price": 1100,
       "description": "Full all-star mix. Competition energy, clean hits, and a mix that stays loud from the first 8-count.",
+      "sampleName": "",
       "sampleUrl": "",
       "active": true
     }

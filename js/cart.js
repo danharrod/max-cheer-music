@@ -134,7 +134,7 @@ const MaxCart = {
   },
   async loadCatalog() {
     try {
-      const res = await fetch("/api/catalog");
+      const res = await fetch(`/api/catalog?t=${Date.now()}`);
       if (!res.ok) return;
       const data = await res.json();
       (data.products || []).forEach((p) => {
@@ -216,7 +216,7 @@ function hydrateFromCatalog() {
         ${p.sampleUrl ? `<audio data-audio="${p.id}" src="${p.sampleUrl}" preload="none"></audio>` : ""}
         <button class="play" type="button" data-play="${p.id}" ${p.sampleUrl ? "" : "disabled"} aria-label="Play">▶</button>
         <div>
-          <h3>${p.name}</h3>
+          <h3>${p.sampleName || p.name}</h3>
           <p>${p.sampleUrl ? "Sample clip" : "Sample coming soon"}</p>
         </div>
         <button class="btn" type="button" data-add="${p.id}">Add to cart</button>
