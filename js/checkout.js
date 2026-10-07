@@ -25,6 +25,10 @@ async function loadPaySettings() {
   return defaults;
 }
 
+function esc(s) {
+  return String(s || "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+}
+
 function collectOrder(form, method) {
   return {
     method,
@@ -86,23 +90,15 @@ function formatMessage(order) {
   ].join("\n");
 }
 
-async function sendOrderEmail(order) {
-  try {
-    const api = await fetch("/api/order", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(order),
-    });
-    if (api.ok) return true;
-  } catch {}
-
-  const res = await fetch(`https://formsubmit.co/ajax/${ORDER_EMAIL}`, {
+async function sendViaFormSubmit(order) {
+  const fallback = await fetch(`https://formsubmit.co/ajax/${ORDER_EMAIL}`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       Accept: "application/json",
     },
     body: JSON.stringify({
+      _captcha: false,
       _subject: `New mix order — ${order.gym} / ${order.teamName}`,
       _replyto: order.email,
       name: `${order.coachFirst} ${order.coachLast}`,
@@ -110,7 +106,26 @@ async function sendOrderEmail(order) {
       message: formatMessage(order),
     }),
   });
-  return res.ok;
+  const fallbackData = await fallback.json().catch(() => ({}));
+  const success = fallbackData.success === true || fallbackData.success === "true";
+  if (fallback.ok && success) return { ok: true, emailed: true };
+  throw new Error(fallbackData.message || "Could not send the order email.");
+}
+
+async function sendOrderEmail(order) {
+  const res = await fetch("/api/order", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(order),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (res.ok && data.emailed) return data;
+  try {
+    const emailed = await sendViaFormSubmit(order);
+    if (emailed) return { ok: true, orderId: data.orderId, emailed: true };
+  } catch {}
+  if (res.ok) return data;
+  throw new Error(data.error || "Could not send the order.");
 }
 
 document.addEventListener("DOMContentLoaded", async () => {
@@ -136,43 +151,57 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   const settings = await loadPaySettings();
   const amount = MaxCart.total();
+  if (form.completionDate) form.completionDate.min = new Date().toISOString().slice(0, 10);
 
   async function pay(method) {
     if (!form.reportValidity()) return;
+    document.getElementById("pay-paypal").disabled = true;
+    document.getElementById("pay-venmo").disabled = true;
+    document.getElementById("pay-po").disabled = true;
     const order = collectOrder(form, method);
     localStorage.setItem("max-music-last-order", JSON.stringify(order));
     status.textContent = "Sending your order…";
 
-    const sent = await sendOrderEmail(order).catch(() => false);
-    if (!sent) {
-      status.textContent = "Could not send the order email. Check the form and try again.";
+    let result;
+    try {
+      result = await sendOrderEmail(order);
+    } catch {
+      status.textContent = "Could not send the order. Check the form and try again.";
+      document.getElementById("pay-paypal").disabled = false;
+      document.getElementById("pay-venmo").disabled = false;
+      document.getElementById("pay-po").disabled = false;
       return;
     }
+
+    MaxCart.clear();
+    const portalNote = "Log in to the Portal with this email and password to enter your 5 songs and upload your count sheet.";
+    const mailNote = result.emailed
+      ? "MAX Cheer Music has the order."
+      : "The order is saved. If email is delayed, MAX still has it in admin.";
+    const payNote =
+      method === "paypal"
+        ? "Complete PayPal in the new tab."
+        : method === "School PO"
+          ? "This was marked as a school PO. MAX will follow up."
+          : "Complete Venmo in the new tab.";
 
     const note = encodeURIComponent(orderNote(order));
     if (method === "paypal") {
       const handle = (settings.paypalMe || "").replace(/^@/, "");
-      if (!handle) {
-        status.textContent = "Order emailed to MAX Cheer Music. Add your PayPal.me name in admin to enable PayPal checkout.";
-        return;
-      }
-      window.open(`https://www.paypal.com/paypalme/${handle}/${amount}`, "_blank");
-      status.textContent = "Order emailed. Complete PayPal, then log in to the Portal to enter your 5 songs and upload your count sheet.";
-      return;
+      if (handle) window.open(`https://www.paypal.com/paypalme/${handle}/${amount}`, "_blank");
+    } else if (method !== "School PO") {
+      const handle = (settings.venmo || "").replace(/^@/, "");
+      if (handle) window.open(`https://venmo.com/${handle}?txn=pay&amount=${amount}&note=${note}`, "_blank");
     }
 
-    if (method === "School PO") {
-      status.textContent = "Order emailed as a school PO. Log in to the Portal to enter your 5 songs and upload your count sheet. MAX will follow up on the purchase order.";
-      return;
-    }
-
-    const handle = (settings.venmo || "").replace(/^@/, "");
-    if (!handle) {
-      status.textContent = "Order emailed to MAX Cheer Music. Add your Venmo name in admin to enable Venmo checkout.";
-      return;
-    }
-    window.open(`https://venmo.com/${handle}?txn=pay&amount=${amount}&note=${note}`, "_blank");
-    status.textContent = "Order emailed. Complete Venmo, then log in to the Portal to enter your 5 songs and upload your count sheet.";
+    document.querySelector(".checkout-grid").innerHTML = `
+      <article class="checkout-thanks">
+        <h2>Order received</h2>
+        <p>${mailNote} ${payNote}</p>
+        <p><strong>${esc(order.gym)}</strong> · ${esc(order.teamName)} · ${money(order.total)}</p>
+        <p class="hint">${portalNote}</p>
+        <p><a class="btn" href="portal.html">Open portal</a> <a class="btn btn-outline" href="sheets.html">Fill 8-count sheet</a></p>
+      </article>`;
   }
 
   document.getElementById("pay-paypal").addEventListener("click", () => pay("paypal"));

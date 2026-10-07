@@ -47,6 +47,12 @@ function footer() {
 }
 
 document.addEventListener("DOMContentLoaded", () => {
+  if (!document.querySelector("link[rel='icon']")) {
+    const icon = document.createElement("link");
+    icon.rel = "icon";
+    icon.href = "assets/max-logo.png";
+    document.head.appendChild(icon);
+  }
   const page = document.body.dataset.page || "";
   document.body.insertAdjacentHTML("afterbegin", header(page));
   document.body.insertAdjacentHTML("beforeend", footer());

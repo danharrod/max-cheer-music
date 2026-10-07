@@ -7,26 +7,42 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Anton&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="css/max.css" />
+  <link rel="stylesheet" href="css/max.css?v=sheet" />
 </head>
 <body data-page="sheets">
   <main>
     <section class="section">
-      <div class="wrap split">
+      <div class="wrap sheet-intro">
         <div class="prose">
           <p class="kicker">Counts</p>
           <h1>8 count sheets</h1>
-          <p>Clean count sheets that match the mix — so the floor, the coaches, and the music are on the same page.</p>
-          <p>47 eights, music start to end. Download the sheet, fill team name and routine, and run the mix.</p>
-          <p><a class="btn" href="assets/max-count-sheets.pdf" download="MAX-Music-Count-Sheets.pdf">Download PDF</a></p>
+          <p>Type the team name, sections, and counts right here. Print or save as PDF, then upload it in the Portal with your order.</p>
+          <p class="sheet-actions no-print">
+            <button class="btn" type="button" id="sheet-print">Print / save as PDF</button>
+            <button class="btn btn-outline" type="button" id="sheet-clear">Clear sheet</button>
+          </p>
+          <p class="hint no-print" id="sheet-status">In the print window, choose Save as PDF.</p>
         </div>
-        <div class="panel" style="padding:0; overflow:hidden; min-height:560px;">
-          <iframe title="MAX Music count sheets" src="assets/max-count-sheets.pdf" style="width:100%; height:560px; border:0; background:#fff;"></iframe>
-        </div>
+      </div>
+    </section>
+    <section class="section" style="padding-top:0">
+      <div class="wrap">
+        <form id="count-sheet" class="count-sheet" autocomplete="off">
+          <div class="sheet-head">
+            <img src="assets/max-logo.png" alt="MAX Cheer Music" />
+            <label>
+              <span>Team name</span>
+              <input name="team_name" placeholder="Team name" />
+            </label>
+          </div>
+          <div id="sheet-page-1" class="sheet-page"></div>
+          <div id="sheet-page-2" class="sheet-page"></div>
+        </form>
       </div>
     </section>
   </main>
   <script src="js/cart.js"></script>
   <script src="js/site.js"></script>
+  <script src="js/sheets.js"></script>
 </body>
 </html>

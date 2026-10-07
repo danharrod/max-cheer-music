@@ -60,16 +60,27 @@ async function sendWithFormSubmit(order) {
       Accept: "application/json",
     },
     body: JSON.stringify({
+      _captcha: false,
       _subject: `New mix order — ${order.gym || "MAX Cheer Music"} / ${order.teamName || ""}`.trim(),
       _replyto: order.email,
       _template: "box",
+      _autoresponse: "Thanks for your MAX Cheer Music order. Log in to the Portal with this email and the password you chose to enter your 5 songs and upload your count sheet PDF.",
       name: `${order.coachFirst || ""} ${order.coachLast || ""}`.trim(),
       email: order.email,
+      gym: order.gym,
+      team: order.teamName,
+      payment: order.method,
+      total: order.total,
       message: formatOrder(order),
     }),
   });
-  if (!res.ok) throw new Error("FormSubmit failed");
-  return res.json().catch(() => ({}));
+  const data = await res.json().catch(() => ({}));
+  const success = data.success === true || data.success === "true";
+  if (!res.ok || !success) {
+    console.error("FormSubmit response", res.status, data);
+    throw new Error(data.message || `FormSubmit failed (${res.status})`);
+  }
+  return data;
 }
 
 async function sendWithResend(order) {
@@ -134,13 +145,24 @@ module.exports = async (req, res) => {
     };
     store.orders = store.orders || [];
     store.orders.push(saved);
-    await saveStore(store);
+    const ok = await saveStore(store);
+    if (!ok) return res.status(500).json({ error: "Could not save order." });
 
-    const resend = await sendWithResend(order);
-    if (!resend) await sendWithFormSubmit(order);
-    return res.status(200).json({ ok: true, orderId: saved.id });
+    let emailed = false;
+    try {
+      const resend = await sendWithResend(order);
+      if (resend) emailed = true;
+      else {
+        await sendWithFormSubmit(order);
+        emailed = true;
+      }
+    } catch (err) {
+      console.error("order email failed", err);
+    }
+    return res.status(200).json({ ok: true, orderId: saved.id, emailed });
   } catch (err) {
-    return res.status(502).json({ error: "Could not send order email" });
+    console.error("order save failed", err);
+    return res.status(502).json({ error: err.message || "Could not place order" });
   }
 };
 

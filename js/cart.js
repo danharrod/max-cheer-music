@@ -52,6 +52,9 @@ const MaxCart = {
   remove(id) {
     writeCart(readCart().filter((i) => i.id !== id));
   },
+  clear() {
+    writeCart([]);
+  },
   setQty(id, qty) {
     const items = readCart();
     const item = items.find((i) => i.id === id);

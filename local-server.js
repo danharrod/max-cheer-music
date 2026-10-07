@@ -6,6 +6,7 @@ const admin = require("./api/admin");
 const order = require("./api/order");
 const portal = require("./api/portal");
 const download = require("./api/download");
+const contact = require("./api/contact");
 
 const ROOT = process.cwd();
 const PORT = Number(process.env.PORT) || 5173;
@@ -51,6 +52,7 @@ const server = http.createServer(async (req, res) => {
   if (url.pathname === "/api/order") return wrap(order, req, res);
   if (url.pathname === "/api/portal") return wrap(portal, req, res);
   if (url.pathname === "/api/download") return wrap(download, req, res);
+  if (url.pathname === "/api/contact") return wrap(contact, req, res);
 
   let filePath = decodeURIComponent(url.pathname);
   if (filePath === "/") filePath = "/index.html";

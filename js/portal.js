@@ -17,6 +17,24 @@ function esc(value) {
   return String(value || "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 }
 
+function statusLabel(status) {
+  if (status === "ready") return "Ready to download";
+  if (status === "in-progress") return "Mix in progress";
+  return "Order received";
+}
+
+function statusClass(status) {
+  if (status === "ready") return "ready";
+  if (status === "in-progress") return "in-progress";
+  return "received";
+}
+
+function orderFingerprint(orders) {
+  return (orders || [])
+    .map((o) => `${o.id}:${o.status}:${(o.files || []).length}:${o.countSheet?.id || ""}`)
+    .join("|");
+}
+
 function previewData() {
   return {
     auth: { email: "preview@maxcheermusic.com", token: "preview" },
@@ -117,7 +135,8 @@ function render(data) {
         (o) => `
       <article class="product">
         <h2>${esc(o.teamName || "Order")} · $${Number(o.total || 0).toLocaleString("en-US")}</h2>
-        <p class="hint">${esc(o.status)} · ${esc(o.createdAt || "")}</p>
+        <p class="order-status ${statusClass(o.status)}">${esc(statusLabel(o.status))}</p>
+        <p class="hint">${esc(o.createdAt || "")}</p>
         <p>Gym: ${esc(o.gym || "")}</p>
         <p>Coach: ${esc(o.coachFirst || "")} ${esc(o.coachLast || "")}</p>
         <p>Due: ${esc(o.completionDate || "")}</p>
@@ -133,7 +152,7 @@ function render(data) {
         </div>
         <div class="song-box">
           <p class="field-label">Count sheet PDF</p>
-          <p class="hint">Upload the count sheet for this mix.</p>
+          <p class="hint">Download the fillable sheet from <a href="sheets.html">8 Count Sheets</a>, type in the counts, save it, then upload the PDF here.</p>
           ${
             o.countSheet
               ? `<p><a class="btn btn-outline" href="${downloadUrl(o, o.countSheet, data.auth)}">Download ${esc(o.countSheet.name)}</a></p>`
@@ -258,11 +277,27 @@ document.addEventListener("DOMContentLoaded", async () => {
   });
 
   const auth = session();
-  if (!auth) return;
-  try {
-    portalState = { auth };
-    render(await api({ action: "me" }));
-  } catch {
-    localStorage.removeItem(KEY);
+  if (auth) {
+    try {
+      portalState = { auth };
+      render(await api({ action: "me" }));
+    } catch {
+      localStorage.removeItem(KEY);
+      portalState = null;
+    }
   }
+
+  async function refreshPortal() {
+    if (isPreview() || !portalState?.auth) return;
+    if (document.activeElement?.matches?.("[data-song], [data-sheet], textarea, input")) return;
+    try {
+      const data = await api({ action: "me" });
+      if (orderFingerprint(portalState.orders) === orderFingerprint(data.orders)) return;
+      render(data);
+    } catch {}
+  }
+  setInterval(refreshPortal, 8000);
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden) refreshPortal();
+  });
 });

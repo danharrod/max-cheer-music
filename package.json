@@ -2,10 +2,13 @@
   "name": "max-cheer-music",
   "private": true,
   "scripts": {
-    "dev": "node server.js",
+    "dev": "node local-server.js",
     "deploy": "vercel --prod"
   },
   "devDependencies": {
     "vercel": "^59.17.0"
+  },
+  "dependencies": {
+    "@vercel/blob": "^2.8.0"
   }
 }

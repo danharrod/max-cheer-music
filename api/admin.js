@@ -163,7 +163,8 @@ module.exports = async (req, res) => {
       file: saved.file || saved.url,
     });
     order.status = "ready";
-    await saveStore(store);
+    const attached = await saveStore(store);
+    if (!attached) return res.status(500).json({ error: "Could not save mix upload." });
     return res.status(200).json(publicOrder(order));
   }
 
@@ -171,8 +172,11 @@ module.exports = async (req, res) => {
     const store = await getStore();
     const order = (store.orders || []).find((o) => o.id === body.orderId);
     if (!order) return res.status(404).json({ error: "Order not found" });
-    order.status = body.status || order.status;
-    await saveStore(store);
+    const allowed = ["received", "in-progress", "ready"];
+    if (!allowed.includes(body.status)) return res.status(400).json({ error: "Invalid status" });
+    order.status = body.status;
+    const ok = await saveStore(store);
+    if (!ok) return res.status(500).json({ error: "Could not save status." });
     return res.status(200).json(publicOrder(order));
   }
 

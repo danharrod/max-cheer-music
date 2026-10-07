@@ -127,10 +127,11 @@ function renderOrders() {
       }</p>
       <p>${(o.files || []).map((f) => f.name).join(", ") || "No mix uploaded"}</p>
       <label>Status</label>
-      <select data-status="${o.id}">
-        <option ${o.status === "received" ? "selected" : ""}>received</option>
-        <option ${o.status === "in-progress" ? "selected" : ""}>in-progress</option>
-        <option ${o.status === "ready" ? "selected" : ""}>ready</option>
+      <p class="hint">This status shows in the customer portal as soon as you change it.</p>
+      <select data-status="${esc(o.id)}">
+        <option value="received" ${o.status === "received" ? "selected" : ""}>Order received</option>
+        <option value="in-progress" ${o.status === "in-progress" ? "selected" : ""}>Mix in progress</option>
+        <option value="ready" ${o.status === "ready" ? "selected" : ""}>Ready to download</option>
       </select>
       <label>Upload finished mix</label>
       <input data-attach="${o.id}" type="file" accept="audio/*,.zip,.mp3,.wav,.m4a" />
@@ -248,11 +249,19 @@ document.addEventListener("DOMContentLoaded", async () => {
       await api({ action: "attach", orderId: attach.dataset.attach, filename: file.name, data });
       await loadApp();
       setStatus("Mix uploaded. Customer can download it in the portal.");
+      return;
     }
     const status = e.target.closest("[data-status]");
     if (status) {
-      await api({ action: "status", orderId: status.dataset.status, status: status.value });
-      setStatus("Order status updated.");
+      try {
+        await api({ action: "status", orderId: status.dataset.status, status: status.value });
+        const order = state.orders.find((o) => o.id === status.dataset.status);
+        if (order) order.status = status.value;
+        renderOrders();
+        setStatus("Order status updated. It now shows in the customer portal.");
+      } catch (err) {
+        setStatus(err.message);
+      }
     }
   });
 

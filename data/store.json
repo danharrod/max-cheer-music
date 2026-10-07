@@ -8,7 +8,7 @@
     {
       "id": "school",
       "name": "School team",
-      "title": "Cheer mix school",
+      "title": "School Mix",
       "price": 750,
       "description": "School team mix built for game day, pep rallies, and competition — sized to your routine.",
       "sampleName": "",
@@ -18,7 +18,7 @@
     {
       "id": "novice",
       "name": "Allstar novice",
-      "title": "Cheer mix novice",
+      "title": "Novice Mix",
       "price": 600,
       "description": "Novice mix that still hits. Clear counts, strong energy, and a crowd-ready finish.",
       "sampleName": "",
@@ -28,7 +28,7 @@
     {
       "id": "prep",
       "name": "Allstar prep",
-      "title": "Cheer mix prep",
+      "title": "Prep Mix",
       "price": 700,
       "description": "All-star prep mix with the same punch as elite tracks, cut for prep timing and skill sets.",
       "sampleName": "",
@@ -38,10 +38,10 @@
     {
       "id": "allstar",
       "name": "Allstar",
-      "title": "Cheer mix allstar",
+      "title": "Allstar Mix",
       "price": 1100,
       "description": "Full all-star mix. Competition energy, clean hits, and a mix that stays loud from the first 8-count.",
-      "sampleName": "",
+      "sampleName": "Worlds Allstar Demo",
       "sampleUrl": "",
       "active": true
     }
