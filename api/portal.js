@@ -32,22 +32,65 @@ function readBody(req) {
 
 function upsertUser(store, order) {
   const email = String(order.email || "").toLowerCase().trim();
-  if (!email || !order.password) return null;
+  if (!email) return null;
   let user = (store.users || []).find((u) => u.email === email);
-  const salt = user?.salt || crypto.randomBytes(16).toString("hex");
-  const passwordHash = hashPassword(order.password, salt);
   if (!user) {
-    user = { email, salt, passwordHash };
+    if (!order.password) return null;
+    const salt = crypto.randomBytes(16).toString("hex");
+    user = { email, salt, passwordHash: hashPassword(order.password, salt) };
     store.users.push(user);
-  } else if (order.password) {
-    user.salt = salt;
-    user.passwordHash = passwordHash;
   }
   user.gym = order.gym || user.gym;
   user.coachFirst = order.coachFirst || user.coachFirst;
   user.coachLast = order.coachLast || user.coachLast;
   return user;
 }
+
+function skipMail() {
+  return process.env.MAX_SKIP_EMAILS === "1" || process.env.MAX_TEST_STORE === "1";
+}
+
+async function sendResetEmail(to, link) {
+  const text = [
+    "Reset your MAX Cheer Music portal password:",
+    link,
+    "",
+    "This link expires in 1 hour. If you did not ask for this, ignore the email.",
+  ].join("\n");
+  const key = process.env.RESEND_API_KEY;
+  if (key) {
+    const res = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${key}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        from: process.env.ORDER_FROM_EMAIL || "MAX Cheer Music <orders@maxcheermusic.com>",
+        to: [to],
+        subject: "Reset your portal password",
+        text,
+      }),
+    });
+    if (!res.ok) throw new Error("reset email failed");
+    return;
+  }
+  await fetch(`https://formsubmit.co/ajax/${encodeURIComponent(to)}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Accept: "application/json" },
+    body: JSON.stringify({
+      _subject: "Reset your MAX Cheer Music portal password",
+      message: text,
+    }),
+  });
+}
+
+function hashResetToken(token) {
+  return crypto.createHash("sha256").update(String(token)).digest("hex");
+}
+
+const RESET_MESSAGE =
+  "If that email has a portal account, we sent a reset link. New customers create access at checkout.";
 
 function ownOrder(store, user, orderId) {
   return (store.orders || []).find((o) => o.id === orderId && o.email === user.email);
@@ -59,6 +102,7 @@ function payload(user, store) {
 }
 
 async function notifyPortal(order, subject, extra) {
+  if (skipMail()) return;
   const message = [
     subject,
     "",
@@ -128,6 +172,46 @@ module.exports = async (req, res) => {
       token: customerToken(user.email, user.passwordHash),
       ...payload(user, store),
     });
+  }
+
+  if (body.action === "request-reset") {
+    const email = String(body.email || "").toLowerCase().trim();
+    const generic = { ok: true, message: RESET_MESSAGE };
+    const user = (store.users || []).find((u) => u.email === email);
+    if (!user) return res.status(200).json(generic);
+    const raw = crypto.randomBytes(32).toString("hex");
+    user.resetTokenHash = hashResetToken(raw);
+    user.resetTokenExp = Date.now() + 60 * 60 * 1000;
+    await saveStore(store);
+    const origin = String(req.headers.origin || "https://maxcheermusic.com").replace(/\/$/, "");
+    const link = `${origin}/portal.html?reset=${raw}`;
+    if (!skipMail()) {
+      try {
+        await sendResetEmail(user.email, link);
+      } catch {}
+    }
+    if (process.env.MAX_TEST_STORE === "1") generic.testResetToken = raw;
+    return res.status(200).json(generic);
+  }
+
+  if (body.action === "reset-password") {
+    const token = String(body.resetToken || body.token || "").trim();
+    const password = String(body.password || "");
+    if (!token || password.length < 6) {
+      return res.status(400).json({ error: "Choose a new password with at least 6 characters." });
+    }
+    const hashed = hashResetToken(token);
+    const user = (store.users || []).find(
+      (u) => u.resetTokenHash && u.resetTokenHash === hashed && Number(u.resetTokenExp) > Date.now()
+    );
+    if (!user) return res.status(400).json({ error: "That reset link is invalid or expired." });
+    const salt = crypto.randomBytes(16).toString("hex");
+    user.salt = salt;
+    user.passwordHash = hashPassword(password, salt);
+    user.resetTokenHash = "";
+    user.resetTokenExp = 0;
+    await saveStore(store);
+    return res.status(200).json({ ok: true, message: "Password updated. Log in with your new password." });
   }
 
   const user = validCustomer(store, body.email, body.token);

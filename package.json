@@ -3,6 +3,7 @@
   "private": true,
   "scripts": {
     "dev": "node local-server.js",
+    "test": "MAX_TEST_STORE=1 MAX_SKIP_EMAILS=1 node --test test/*.test.js",
     "deploy": "vercel --prod"
   },
   "devDependencies": {

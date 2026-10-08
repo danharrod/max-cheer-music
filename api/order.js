@@ -3,7 +3,12 @@ const {
   saveStore,
 } = require("../lib/store");
 const { upsertUser } = require("./portal");
+const { buildOrder, findByIdempotency } = require("../lib/orders");
 const ORDER_EMAIL = "maxcheermusic@gmail.com";
+
+function skipMail() {
+  return process.env.MAX_SKIP_EMAILS === "1" || process.env.MAX_TEST_STORE === "1";
+}
 
 function readBody(req) {
   if (req.body && typeof req.body === "object") return Promise.resolve(req.body);
@@ -116,53 +121,37 @@ module.exports = async (req, res) => {
     return res.status(400).json({ error: "Invalid JSON" });
   }
 
-  if (!order.email || !order.gym) {
-    return res.status(400).json({ error: "Missing order details" });
-  }
-
   try {
     const store = await getStore();
-    if (order.password) upsertUser(store, order);
-    const saved = {
-      id: `ord-${Date.now()}`,
-      status: "received",
-      method: order.method,
-      total: order.total,
-      items: order.items || [],
-      gym: order.gym,
-      coachFirst: order.coachFirst,
-      coachLast: order.coachLast,
-      email: String(order.email).toLowerCase().trim(),
-      completionDate: order.completionDate,
-      teamName: order.teamName,
-      teamColors: order.teamColors,
-      voiceover: order.voiceover,
-      poNumber: String(order.poNumber || "").trim(),
-      songs: [],
-      countSheet: null,
-      createdAt: order.createdAt || new Date().toISOString(),
-      files: [],
-    };
+    const existing = findByIdempotency(store.orders, order.idempotencyKey);
+    if (existing) {
+      return res.status(200).json({ ok: true, orderId: existing.id, emailed: false, duplicate: true });
+    }
+    const saved = buildOrder(store, order);
+    upsertUser(store, order);
     store.orders = store.orders || [];
     store.orders.push(saved);
     const ok = await saveStore(store);
     if (!ok) return res.status(500).json({ error: "Could not save order." });
 
     let emailed = false;
-    try {
-      const resend = await sendWithResend(order);
-      if (resend) emailed = true;
-      else {
-        await sendWithFormSubmit(order);
-        emailed = true;
+    if (!skipMail()) {
+      try {
+        const resend = await sendWithResend(saved);
+        if (resend) emailed = true;
+        else {
+          await sendWithFormSubmit(saved);
+          emailed = true;
+        }
+      } catch (err) {
+        console.error("order email failed");
       }
-    } catch (err) {
-      console.error("order email failed", err);
     }
     return res.status(200).json({ ok: true, orderId: saved.id, emailed });
   } catch (err) {
-    console.error("order save failed", err);
-    return res.status(502).json({ error: err.message || "Could not place order" });
+    const status = Number(err.status) || 502;
+    if (status >= 500) console.error("order save failed");
+    return res.status(status).json({ error: err.message || "Could not place order" });
   }
 };
 

@@ -17,75 +17,101 @@
     </section>
     <section class="section" style="padding-top:8px">
       <div class="wrap checkout-grid">
-        <form id="order-form" class="order-form">
-          <div class="full">
-            <label>Gym or school name <span>(required)</span></label>
-            <input name="gym" required />
-          </div>
-          <div class="full">
-            <p class="field-label">Coach name</p>
-          </div>
-          <div>
-            <label>First name <span>(required)</span></label>
-            <input name="coachFirst" required />
-          </div>
-          <div>
-            <label>Last name <span>(required)</span></label>
-            <input name="coachLast" required />
-          </div>
-          <div class="full">
-            <label>Email <span>(required)</span></label>
-            <input type="email" name="email" required />
-          </div>
-          <div class="full">
-            <label>Desired music completion date <span>(required)</span></label>
-            <p class="hint">Date will be confirmed by email once order is placed.</p>
-            <input type="date" name="completionDate" required />
-          </div>
-          <div class="full">
-            <label>Team name <span>(required)</span></label>
-            <input name="teamName" required />
-          </div>
-          <div class="full">
-            <label>Team colors <span>(required)</span></label>
-            <input name="teamColors" required />
-          </div>
-          <div class="full">
-            <label>Voiceover ideas <span>(required)</span></label>
-            <p class="hint">Please include any themes, saying, or ideas you would like in the music for our custom sections of the music.</p>
-            <textarea name="voiceover" required></textarea>
-          </div>
-          <div class="full">
-            <label>Portal password <span>(required)</span></label>
-            <p class="hint">Use this password to log in later, see your order, and download your mix.</p>
-            <input type="password" name="password" minlength="6" required />
-          </div>
-          <div class="full">
-            <label>PO number <span>(optional)</span></label>
-            <p class="hint">If you’re paying with a school purchase order, add the PO number if you have it.</p>
-            <input name="poNumber" />
-          </div>
-          <div class="full next-step">
-            <p class="field-label">Next step</p>
-            <p class="hint">Please visit <a href="https://songsforcheer.com" target="_blank" rel="noreferrer">songsforcheer.com</a> and choose 5 songs. After you pay, log in to the Portal to type those song names and upload your count sheet PDF. Mix work starts after those are in.</p>
-          </div>
+        <form id="order-form" class="order-form" novalidate>
+          <article class="form-section process-box">
+            <p class="field-label">Before you submit</p>
+            <ol class="process-list">
+              <li>This form places your mix order with MAX Cheer Music.</li>
+              <li>Choose 5 songs at <a href="https://songsforcheer.com" target="_blank" rel="noreferrer">songsforcheer.com</a>.</li>
+              <li>After checkout, log in to the Portal to type those song names and upload your count sheet PDF.</li>
+              <li>Mix production starts after the songs and count sheet are in.</li>
+            </ol>
+            <p class="hint">The completion date below is a <strong>requested date</strong>. It is not a confirmed deadline until MAX emails you to confirm it.</p>
+          </article>
+
+          <fieldset class="form-section">
+            <legend>Contact</legend>
+            <div class="full">
+              <label for="gym">Gym or school name <span>(required)</span></label>
+              <input id="gym" name="gym" required autocomplete="organization" />
+            </div>
+            <div>
+              <label for="coachFirst">Coach first name <span>(required)</span></label>
+              <input id="coachFirst" name="coachFirst" required autocomplete="given-name" />
+            </div>
+            <div>
+              <label for="coachLast">Coach last name <span>(required)</span></label>
+              <input id="coachLast" name="coachLast" required autocomplete="family-name" />
+            </div>
+            <div class="full">
+              <label for="email">Email <span>(required)</span></label>
+              <input id="email" type="email" name="email" required autocomplete="email" />
+            </div>
+          </fieldset>
+
+          <fieldset class="form-section">
+            <legend>Team and routine</legend>
+            <div class="full">
+              <label for="completionDate">Requested completion date <span>(required)</span></label>
+              <p class="hint">This is what you are asking for. MAX will confirm the actual deadline by email.</p>
+              <input id="completionDate" type="date" name="completionDate" required />
+            </div>
+            <div class="full">
+              <label for="teamName">Team name <span>(required)</span></label>
+              <input id="teamName" name="teamName" required />
+            </div>
+            <div class="full">
+              <label for="teamColors">Team colors <span>(required)</span></label>
+              <input id="teamColors" name="teamColors" required />
+            </div>
+            <div class="full">
+              <label for="voiceover">Voiceover ideas <span>(required)</span></label>
+              <p class="hint">Include themes, sayings, or ideas you want in the custom sections of the music.</p>
+              <textarea id="voiceover" name="voiceover" required></textarea>
+            </div>
+          </fieldset>
+
+          <fieldset class="form-section">
+            <legend>Portal access</legend>
+            <p class="hint">New customers create portal access here. Returning customers: your existing password stays in place even if you type one here. MAX will not replace it.</p>
+            <div class="full">
+              <label for="password">Portal password <span>(required for new accounts)</span></label>
+              <p class="hint">Use this email and password later to enter 5 songs, upload your count sheet, and download your mix. Passwords are not saved in your browser storage by this site.</p>
+              <input id="password" type="password" name="password" minlength="6" required autocomplete="new-password" />
+            </div>
+          </fieldset>
+
+          <fieldset class="form-section">
+            <legend>Payment</legend>
+            <p class="hint">Each button below <strong>saves the order first</strong>, then either opens PayPal or Venmo so you can send payment, or records a school PO. Opening a payment link does not mark the order paid. MAX verifies payment separately.</p>
+            <div class="full">
+              <label for="poNumber">PO number <span>(optional)</span></label>
+              <p class="hint">If you are paying with a school purchase order, add the number if you have it.</p>
+              <input id="poNumber" name="poNumber" />
+            </div>
+          </fieldset>
         </form>
 
-        <aside class="checkout-summary">
+        <aside class="checkout-summary" aria-label="Order summary">
           <h2>Your order</h2>
           <div id="checkout-lines"></div>
           <p class="cart-total" id="checkout-total"></p>
-          <p class="hint">Pay with Venmo, PayPal, or a school purchase order after you fill out the order details.</p>
-          <button class="btn pay paypal" type="button" id="pay-paypal">Pay with PayPal</button>
-          <button class="btn pay venmo" type="button" id="pay-venmo">Pay with Venmo</button>
-          <button class="btn pay po" type="button" id="pay-po">Pay with school PO</button>
-          <p class="hint" id="pay-status"></p>
         </aside>
+
+        <div class="checkout-actions">
+          <button class="btn pay paypal" type="button" id="pay-paypal">Place order and open PayPal</button>
+          <p class="hint">Saves the order, then opens PayPal so you can send payment. Payment is not verified from this click.</p>
+          <button class="btn pay venmo" type="button" id="pay-venmo">Place order and open Venmo</button>
+          <p class="hint">Saves the order, then opens Venmo so you can send payment. Payment is not verified from this click.</p>
+          <button class="btn pay po" type="button" id="pay-po">Place order with school PO</button>
+          <p class="hint">Saves the order as a school purchase order. No payment window opens. MAX will follow up.</p>
+          <p class="hint" id="pay-status" role="status"></p>
+        </div>
       </div>
     </section>
   </main>
-  <script src="js/cart.js?v=clear"></script>
-  <script src="js/site.js"></script>
-  <script src="js/checkout.js?v=thanks"></script>
+  <script src="js/cart.js?v=front1"></script>
+  <script src="js/site.js?v=front1"></script>
+  <script src="js/checkout.js?v=front1"></script>
 </body>
 </html>

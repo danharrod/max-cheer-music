@@ -25,35 +25,56 @@ function fileToBase64(file) {
   });
 }
 
-async function uploadSampleToBlob(file, productId) {
+function sampleFilename(file, kind) {
+  let name = String(file?.name || (kind === "video" ? "sample.mp4" : "sample.mp3"));
+  if (kind === "video" && !/\.(mp4|mov|webm|m4v|avi)$/i.test(name)) {
+    name += String(file?.type || "").includes("quicktime") ? ".mov" : ".mp4";
+  }
+  if (kind === "audio" && !/\.(mp3|wav|m4a|aac|ogg)$/i.test(name)) name += ".mp3";
+  return name;
+}
+
+async function uploadSampleToBlob(file, productId, kind) {
   const tokenRes = await api({
     action: "sample-token",
     productId,
-    filename: file.name,
+    filename: sampleFilename(file, kind),
   });
   const params = new URLSearchParams({ pathname: tokenRes.pathname });
   const headers = {
     authorization: `Bearer ${tokenRes.clientToken}`,
     "x-api-version": "12",
+    "x-vercel-blob-access": "public",
   };
   if (tokenRes.storeId) headers["x-vercel-blob-store-id"] = tokenRes.storeId;
-  if (file.type) headers["content-type"] = file.type;
+  const type = file.type || "application/octet-stream";
+  headers["content-type"] = type;
+  headers["x-content-type"] = type;
   const putRes = await fetch(`https://vercel.com/api/blob/?${params}`, {
     method: "PUT",
     headers,
     body: file,
   });
   const putData = await putRes.json().catch(() => ({}));
+  const message = putData.error?.message || putData.error || putData.message;
   if (!putRes.ok || !putData.url) {
-    throw new Error(putData.error?.message || putData.error || "Upload failed");
+    throw new Error(typeof message === "string" && message ? message : "Upload failed");
   }
   return putData.url;
 }
 
-async function saveSample(productId, { url, sampleName } = {}) {
+function sampleKindFromFile(file) {
+  const type = String(file?.type || "").toLowerCase();
+  const name = String(file?.name || "").toLowerCase();
+  if (type.startsWith("video/") || /\.(mp4|mov|webm|m4v)$/.test(name)) return "video";
+  return "audio";
+}
+
+async function saveSample(productId, { url, sampleName, sampleKind } = {}) {
   const payload = { action: "sample-save", productId };
   if (url) payload.url = url;
   if (sampleName != null) payload.sampleName = sampleName;
+  if (sampleKind) payload.sampleKind = sampleKind;
   const data = await api(payload);
   state = data;
   if (!url) return;
@@ -72,13 +93,42 @@ function productById(id) {
   return state.products.find((p) => p.id === id);
 }
 
+function sampleClips(p) {
+  if (Array.isArray(p.samples) && p.samples.length) return p.samples;
+  if (p.sampleUrl) {
+    return [{ id: `s-legacy-${p.id}`, name: p.sampleName || p.name, url: p.sampleUrl, kind: p.sampleKind }];
+  }
+  return [];
+}
+
+function isVideoClip(clip) {
+  return clip.kind === "video" || /\.(mp4|mov|webm|m4v)(\?|$)/i.test(clip.url || "");
+}
+
 function renderProducts() {
   const el = document.querySelector('[data-panel="products"]');
   el.innerHTML =
     `<p><button class="btn" type="button" data-save-products>Save products</button></p>` +
     state.products
-      .map(
-        (p) => `
+      .map((p) => {
+        const clips = sampleClips(p);
+        const list = clips.length
+          ? `<div class="admin-sample-list">${clips
+              .map(
+                (s) => `
+            <div class="admin-sample-row">
+              <p><strong>${esc(s.name || p.name)}</strong> · ${isVideoClip(s) ? "Video" : "Audio"}</p>
+              ${
+                isVideoClip(s)
+                  ? `<video class="admin-sample-video" controls playsinline src="${esc(s.url)}"></video>`
+                  : `<audio controls src="${esc(s.url)}"></audio>`
+              }
+              <p><button class="btn btn-outline" type="button" data-sample-delete="${esc(p.id)}" data-sample-id="${esc(s.id)}">Remove</button></p>
+            </div>`
+              )
+              .join("")}</div>`
+          : `<p class="hint">No samples yet</p>`;
+        return `
     <article class="product admin-card" data-product="${esc(p.id)}">
       <h2>${esc(p.name || p.id)}</h2>
       <label>Name</label>
@@ -89,14 +139,18 @@ function renderProducts() {
       <input data-id="${esc(p.id)}" data-k="price" type="number" min="0" step="1" value="${Number(p.price) || 0}" />
       <label>Description</label>
       <textarea data-id="${esc(p.id)}" data-k="description">${esc(p.description)}</textarea>
-      <label>Sample name</label>
-      <input data-id="${esc(p.id)}" data-k="sampleName" value="${esc(p.sampleName || "")}" placeholder="Name that shows on the Samples page" autocomplete="off" />
-      <label>Sample audio</label>
-      ${p.sampleUrl ? `<audio controls src="${esc(p.sampleUrl)}"></audio>` : `<p class="hint">No sample yet</p>`}
-      <p class="hint">Pick an audio file. It goes live on Samples as soon as it finishes.</p>
-      <input data-sample="${esc(p.id)}" type="file" accept="audio/*" />
-    </article>`
-      )
+      <label>Samples on the site</label>
+      ${list}
+      <label>New sample name</label>
+      <input data-id="${esc(p.id)}" data-k="sampleName" value="${esc(p.sampleName || "")}" placeholder="Name for the next clip" autocomplete="off" />
+      <label>Add music</label>
+      <p class="hint">Adds an audio clip. Existing clips stay.</p>
+      <input data-sample="${esc(p.id)}" data-sample-kind="audio" type="file" accept="audio/*,.mp3,.wav,.m4a,.aac" />
+      <label>Add video</label>
+      <p class="hint">Adds a video clip. Existing music stays.</p>
+      <input data-sample="${esc(p.id)}" data-sample-kind="video" type="file" accept="video/*,.mp4,.mov,.m4v,.webm" />
+    </article>`;
+      })
       .join("") +
     `<p><button class="btn" type="button" data-save-products>Save products</button></p>`;
 }
@@ -222,21 +276,31 @@ document.addEventListener("DOMContentLoaded", async () => {
       const file = sample.files[0];
       const product = productById(sample.dataset.sample);
       if (!product) return;
-      setStatus("Uploading sample…");
+      const kind = sample.dataset.sampleKind || sampleKindFromFile(file);
+      setStatus(kind === "video" ? "Uploading video…" : "Uploading sample…");
       try {
         let url;
+        let blobErr;
         try {
-          url = await uploadSampleToBlob(file, product.id);
-        } catch {
+          url = await uploadSampleToBlob(file, product.id, kind);
+        } catch (err) {
+          blobErr = err;
           if (file.size > 3.2 * 1024 * 1024) {
-            throw new Error("That file is too large. Use a shorter clip (under 3 MB) or an MP3.");
+            throw new Error(err.message || "Could not upload that file. Try a shorter MP4 or MP3.");
           }
           const data = await fileToBase64(file);
-          const saved = await api({ action: "upload", filename: file.name, data, kind: "samples" });
+          const saved = await api({ action: "upload", filename: sampleFilename(file, kind), data, kind: "samples" });
           url = saved.url;
+          if (!url) throw blobErr || new Error("Upload failed");
         }
-        await saveSample(product.id, { url, sampleName: product.sampleName || "" });
-        setStatus("Sample is live on the Samples page.");
+        await saveSample(product.id, {
+          url,
+          sampleName: product.sampleName || "",
+          sampleKind: kind,
+        });
+        sample.files = null;
+        sample.value = "";
+        setStatus("Sample added. It is live on the Samples page.");
       } catch (err) {
         setStatus(err.message || "Could not upload the sample.");
       }
@@ -285,6 +349,26 @@ document.addEventListener("DOMContentLoaded", async () => {
   });
 
   document.body.addEventListener("click", async (e) => {
+    const remove = e.target.closest("[data-sample-delete]");
+    if (remove) {
+      e.preventDefault();
+      try {
+        setStatus("Removing sample…");
+        const data = await api({
+          action: "sample-delete",
+          productId: remove.dataset.sampleDelete,
+          sampleId: remove.dataset.sampleId,
+        });
+        state = data;
+        renderProducts();
+        renderOrders();
+        renderSettings();
+        setStatus("Sample removed.");
+      } catch (err) {
+        setStatus(err.message || "Could not remove the sample.");
+      }
+      return;
+    }
     if (e.target.closest("[data-save-products]")) {
       e.preventDefault();
       await saveAll();

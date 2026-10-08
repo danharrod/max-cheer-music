@@ -18,9 +18,9 @@ function header(active) {
           ${item("portal.html", "Portal", "portal")}
         </nav>
         <div class="header-actions">
-          <a class="ghost cart-count" href="checkout.html" data-cart-open data-cart-count>Cart</a>
+          <button class="ghost cart-count" type="button" data-cart-open data-cart-count aria-haspopup="dialog" aria-controls="cart-drawer">Cart</button>
           <a class="btn" href="shop.html">Order now</a>
-          <button class="menu-toggle" type="button" aria-label="Open menu">
+          <button class="menu-toggle" type="button" aria-label="Open menu" aria-expanded="false">
             <span></span><span></span><span></span>
           </button>
         </div>
@@ -56,8 +56,20 @@ document.addEventListener("DOMContentLoaded", () => {
   const page = document.body.dataset.page || "";
   document.body.insertAdjacentHTML("afterbegin", header(page));
   document.body.insertAdjacentHTML("beforeend", footer());
-  document.querySelector(".menu-toggle")?.addEventListener("click", () => {
-    document.body.classList.toggle("nav-open");
+  const menu = document.querySelector(".menu-toggle");
+  menu?.addEventListener("click", () => {
+    const open = document.body.classList.toggle("nav-open");
+    menu.setAttribute("aria-expanded", open ? "true" : "false");
+    menu.setAttribute("aria-label", open ? "Close menu" : "Open menu");
+  });
+  document.addEventListener("keydown", (e) => {
+    if (e.key !== "Escape") return;
+    if (document.body.classList.contains("nav-open")) {
+      document.body.classList.remove("nav-open");
+      menu?.setAttribute("aria-expanded", "false");
+      menu?.setAttribute("aria-label", "Open menu");
+      menu?.focus();
+    }
   });
   if (window.MaxCart) MaxCart.mount();
 });

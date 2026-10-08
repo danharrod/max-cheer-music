@@ -14,22 +14,47 @@
     <section class="page-hero wrap">
       <p class="kicker">Account</p>
       <h1 class="page-title">Portal</h1>
-      <p class="lede">Log in to see your order details and download your mix when it’s ready.</p>
+      <p class="lede">Log in to see your order details and download your mix when it’s ready. New customers create access during checkout.</p>
     </section>
     <section class="section" style="padding-top:0">
       <div class="wrap">
         <form id="portal-login" class="order-form">
           <div class="full">
-            <label>Email</label>
-            <input type="email" name="email" required />
+            <label for="portal-email">Email</label>
+            <input id="portal-email" type="email" name="email" required autocomplete="username" />
           </div>
           <div class="full">
-            <label>Password</label>
-            <input type="password" name="password" required />
+            <label for="portal-password">Password</label>
+            <input id="portal-password" type="password" name="password" required autocomplete="current-password" />
           </div>
           <div class="full">
             <button class="btn" type="submit">Log in</button>
-            <p class="hint" id="portal-status">Create a portal password when you check out.</p>
+            <p><button class="ghost" type="button" id="portal-forgot">Forgot password?</button></p>
+            <p class="hint" id="portal-status">Create a portal password when you check out. Returning customers keep their existing password.</p>
+          </div>
+        </form>
+        <form id="portal-reset-request" class="order-form" hidden>
+          <p class="field-label">Reset password</p>
+          <p class="hint">Enter the email from checkout. If that address has a portal account, we send a reset link. This does not create an account or show whether the email is registered.</p>
+          <div class="full">
+            <label for="reset-email">Email</label>
+            <input id="reset-email" type="email" name="email" required autocomplete="email" />
+          </div>
+          <div class="full">
+            <button class="btn" type="submit">Send reset link</button>
+            <p><button class="ghost" type="button" id="portal-reset-back">Back to log in</button></p>
+            <p class="hint" id="reset-request-status"></p>
+          </div>
+        </form>
+        <form id="portal-reset" class="order-form" hidden>
+          <p class="field-label">Choose a new password</p>
+          <div class="full">
+            <label for="reset-password">New password</label>
+            <input id="reset-password" type="password" name="password" minlength="6" required autocomplete="new-password" />
+          </div>
+          <div class="full">
+            <button class="btn" type="submit">Update password</button>
+            <p class="hint" id="reset-status"></p>
           </div>
         </form>
         <div id="portal-app" hidden></div>

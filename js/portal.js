@@ -267,6 +267,74 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   const form = document.getElementById("portal-login");
   const status = document.getElementById("portal-status");
+  const requestForm = document.getElementById("portal-reset-request");
+  const resetForm = document.getElementById("portal-reset");
+  const params = new URLSearchParams(location.search);
+  const resetToken = params.get("reset");
+
+  function showLogin() {
+    form.hidden = false;
+    if (requestForm) requestForm.hidden = true;
+    if (resetForm) resetForm.hidden = true;
+  }
+
+  document.getElementById("portal-forgot")?.addEventListener("click", () => {
+    form.hidden = true;
+    if (resetForm) resetForm.hidden = true;
+    if (requestForm) {
+      requestForm.hidden = false;
+      requestForm.email?.focus();
+    }
+  });
+  document.getElementById("portal-reset-back")?.addEventListener("click", showLogin);
+
+  requestForm?.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const note = document.getElementById("reset-request-status");
+    note.textContent = "Sending…";
+    try {
+      const res = await fetch("/api/portal", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "request-reset", email: requestForm.email.value }),
+      });
+      const data = await res.json().catch(() => ({}));
+      note.textContent = data.message || "If that email has a portal account, we sent a reset link.";
+    } catch {
+      note.textContent = "Could not send a reset link. Try again, or create access at checkout.";
+    }
+  });
+
+  if (resetToken && resetForm) {
+    form.hidden = true;
+    if (requestForm) requestForm.hidden = true;
+    resetForm.hidden = false;
+    resetForm.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const note = document.getElementById("reset-status");
+      note.textContent = "Updating…";
+      try {
+        const res = await fetch("/api/portal", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "reset-password",
+            resetToken,
+            password: resetForm.password.value,
+          }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || "Could not update password.");
+        note.textContent = data.message || "Password updated.";
+        history.replaceState({}, "", "portal.html");
+        showLogin();
+        status.textContent = "Password updated. Log in with your new password.";
+      } catch (err) {
+        note.textContent = err.message;
+      }
+    });
+  }
+
   form.addEventListener("submit", async (e) => {
     e.preventDefault();
     try {
