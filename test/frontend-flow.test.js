@@ -150,6 +150,42 @@ test("orders use catalog prices, block duplicates, and stay unpaid", async () =>
   assert.equal(after.orders.filter((o) => o.email === "order@example.com").length, 1);
 });
 
+test("admin mix attach by url shows on the customer order", async () => {
+  const adminApi = require("../api/admin");
+  const login = await call(adminApi, { action: "login", password: "test-admin-pass", token: "" });
+  assert.equal(login.statusCode, 200);
+  const placed = await call(orderApi, {
+    method: "paypal",
+    idempotencyKey: "mix-key-1",
+    email: "mix@example.com",
+    password: "portal1",
+    gym: "Mix Gym",
+    coachFirst: "Pat",
+    coachLast: "Lee",
+    teamName: "Mix Team",
+    teamColors: "Blue",
+    voiceover: "Hits",
+    completionDate: "2026-11-01",
+    items: [{ id: "allstar", qty: 1 }],
+  });
+  assert.equal(placed.statusCode, 200);
+  const attached = await call(adminApi, {
+    action: "attach",
+    token: login.body.token,
+    orderId: placed.body.orderId,
+    filename: "elite-mix.mp3",
+    url: "https://example.com/elite-mix.mp3",
+  });
+  assert.equal(attached.statusCode, 200);
+  const listed = (attached.body.orders || []).find((o) => o.id === placed.body.orderId);
+  assert.ok(listed.files.some((f) => f.name === "elite-mix.mp3"));
+  const { publicOrder } = require("../lib/store");
+  const saved = (await getStore()).orders.find((o) => o.id === placed.body.orderId);
+  const pub = publicOrder(saved);
+  assert.equal(pub.files[0].name, "elite-mix.mp3");
+  assert.equal(pub.status, "ready");
+});
+
 test("shop and checkout copy match the real flow", () => {
   const shop = fs.readFileSync(path.join(__dirname, "..", "shop.html"), "utf8");
   const checkout = fs.readFileSync(path.join(__dirname, "..", "checkout.html"), "utf8");
@@ -158,8 +194,8 @@ test("shop and checkout copy match the real flow", () => {
   const checkoutJs = fs.readFileSync(path.join(__dirname, "..", "js/checkout.js"), "utf8");
   assert.match(home, /since age 17/);
   assert.doesNotMatch(shop, /Pick a length and level/);
-  assert.match(shop, /requested completion date/i);
-  assert.match(shop, /songsforcheer\.com/);
+  assert.doesNotMatch(shop, /How ordering works/);
+  assert.match(checkout, /songsforcheer\.com/);
   assert.match(checkout, /Place order and open PayPal/);
   assert.match(checkout, /not a confirmed deadline/i);
   assert.match(checkout, /does not mark the order paid/i);
@@ -170,4 +206,60 @@ test("shop and checkout copy match the real flow", () => {
   assert.doesNotMatch(checkoutJs, /localStorage\.setItem\("max-music-last-order"/);
   assert.match(cart, /Escape/);
   assert.match(cart, /collectSampleClips/);
+  assert.match(cart, /youtube-nocookie\.com\/embed/);
+  const adminJs = fs.readFileSync(path.join(__dirname, "..", "js/admin.js"), "utf8");
+  assert.match(adminJs, /clip-youtube/);
+  assert.match(adminJs, /data-payment/);
+  assert.match(adminJs, /label: "Ordered"/);
+  assert.match(adminJs, /label: "In production"/);
+  assert.match(adminJs, /label: "Ready for review"/);
+  assert.match(adminJs, /label: "Completed"/);
+  assert.match(adminJs, /data-order-tab=/);
+  const portalJs = fs.readFileSync(path.join(__dirname, "..", "js/portal.js"), "utf8");
+  assert.match(portalJs, /Ordered/);
+  assert.match(portalJs, /In production/);
+  assert.match(portalJs, /Ready for review/);
+  assert.match(portalJs, /Completed/);
+  assert.match(portalJs, /Not paid/);
+  assert.doesNotMatch(portalJs, /Mix in progress/);
+  assert.match(adminJs, /Requested completion date/);
+  assert.match(adminJs, /Voiceover ideas/);
+  assert.match(portalJs, /Requested date/);
+  assert.match(portalJs, /Voiceover ideas/);
+  assert.match(portalJs, /PO number/);
+});
+
+test("customer portal receives paid or not paid", () => {
+  const { publicOrder } = require("../lib/store");
+  assert.equal(publicOrder({ id: "1", status: "received", paymentStatus: "paid" }).paymentStatus, "paid");
+  assert.equal(publicOrder({ id: "2", status: "in-progress", paymentStatus: "unpaid" }).paymentStatus, "unpaid");
+  assert.equal(publicOrder({ id: "3", status: "ready", paymentStatus: "school-po" }).paymentStatus, "unpaid");
+});
+
+test("YouTube sample URLs parse into catalog clips", () => {
+  const { youtubeIdFromUrl, inferSampleKind, publicCatalog } = require("../lib/store");
+  assert.equal(youtubeIdFromUrl("https://www.youtube.com/watch?v=dQw4w9WgXcQ"), "dQw4w9WgXcQ");
+  assert.equal(youtubeIdFromUrl("https://youtu.be/dQw4w9WgXcQ"), "dQw4w9WgXcQ");
+  assert.equal(youtubeIdFromUrl("https://www.youtube.com/shorts/dQw4w9WgXcQ"), "dQw4w9WgXcQ");
+  assert.equal(inferSampleKind("https://youtu.be/dQw4w9WgXcQ", ""), "youtube");
+  const catalog = publicCatalog({
+    settings: {},
+    products: [],
+    clips: [{ id: "yt-1", name: "Warhawks", url: "https://youtu.be/dQw4w9WgXcQ", kind: "youtube", published: true, sort: 0 }],
+  });
+  assert.equal(catalog.clips[0].kind, "youtube");
+  assert.equal(catalog.clips[0].youtubeId, "dQw4w9WgXcQ");
+  assert.equal(catalog.clips[0].url, "https://www.youtube.com/watch?v=dQw4w9WgXcQ");
+});
+
+test("existing production statuses stay valid and review is available", () => {
+  const { setProductionStatus, normalizeOrder, PRODUCTION_STATUSES } = require("../lib/orders");
+  assert.deepEqual(PRODUCTION_STATUSES, ["received", "in-progress", "review", "ready"]);
+  const finished = normalizeOrder({ id: "old", status: "ready", paymentStatus: "paid" });
+  assert.equal(finished.status, "ready");
+  assert.equal(finished.productionStatus, "ready");
+  const review = setProductionStatus(normalizeOrder({ id: "new", status: "received" }), "review");
+  assert.equal(review.status, "review");
+  assert.equal(review.productionStatus, "review");
+  assert.throws(() => setProductionStatus(review, "done"), /Invalid status/);
 });

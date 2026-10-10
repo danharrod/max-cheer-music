@@ -17,6 +17,19 @@ function esc(s) {
   return String(s || "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 }
 
+function isoDate(date) {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
+function earliestCompletionDate() {
+  const date = new Date();
+  date.setDate(date.getDate() + 7);
+  return isoDate(date);
+}
+
 function idempotencyKey() {
   const keyName = "max-order-key";
   let key = sessionStorage.getItem(keyName);
@@ -223,6 +236,11 @@ document.addEventListener("DOMContentLoaded", async () => {
   const items = MaxCart.items();
   const steps = initCheckoutSteps(form);
   let submitting = false;
+  if (form.completionDate) {
+    const earliest = earliestCompletionDate();
+    form.completionDate.min = earliest;
+    if (!form.completionDate.value) form.completionDate.value = earliest;
+  }
 
   if (!items.length) {
     lines.innerHTML = `<p class="cart-empty">Your cart is empty.</p><p><a class="btn" href="shop.html">Shop mixes</a></p>`;
@@ -238,8 +256,6 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   const settings = await loadPaySettings();
   const amount = MaxCart.total();
-  if (form.completionDate) form.completionDate.min = new Date().toISOString().slice(0, 10);
-
   async function pay(method) {
     if (submitting) return;
     if (steps.openInvalid()) {

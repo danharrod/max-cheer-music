@@ -17,21 +17,67 @@ function esc(value) {
   return String(value || "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 }
 
+function blank(value) {
+  const text = String(value || "").trim();
+  return text ? esc(text) : "—";
+}
+
+function payMethodLabel(method) {
+  if (method === "paypal") return "PayPal";
+  if (method === "venmo") return "Venmo";
+  if (method === "School PO") return "School PO";
+  return String(method || "").trim() || "—";
+}
+
+function mixLine(order) {
+  const items = (order.items || [])
+    .map((i) => `${esc(i.title || i.name || "Mix")} ×${Number(i.qty) || 1}`)
+    .join(", ");
+  return items ? `${items} · $${Number(order.total || 0).toLocaleString("en-US")}` : "—";
+}
+
+function fact(label, value, wide) {
+  return `<div class="order-fact${wide ? " is-wide" : ""}"><span class="order-fact-label">${esc(label)}</span><span class="order-fact-value">${value}</span></div>`;
+}
+
+function checkoutFacts(o) {
+  const coach = [o.coachFirst, o.coachLast].filter((part) => String(part || "").trim()).join(" ");
+  return `
+    <div class="order-facts">
+      ${fact("Gym or school", blank(o.gym))}
+      ${fact("Coach", blank(coach))}
+      ${fact("Email", blank(o.email))}
+      ${fact("Requested date", blank(o.completionDate))}
+      ${fact("Team name", blank(o.teamName))}
+      ${fact("Team colors", blank(o.teamColors))}
+      ${fact("Payment", esc(payMethodLabel(o.method)))}
+      ${fact("PO number", blank(o.poNumber))}
+      ${fact("Mix", mixLine(o), true)}
+      ${fact("Voiceover ideas", blank(o.voiceover), true)}
+    </div>`;
+}
+
 function statusLabel(status) {
-  if (status === "ready") return "Ready to download";
-  if (status === "in-progress") return "Mix in progress";
-  return "Order received";
+  if (status === "ready") return "Completed";
+  if (status === "review") return "Ready for review";
+  if (status === "in-progress") return "In production";
+  return "Ordered";
 }
 
 function statusClass(status) {
   if (status === "ready") return "ready";
+  if (status === "review") return "review";
   if (status === "in-progress") return "in-progress";
   return "received";
 }
 
+function isPaid(order) {
+  return order.paymentStatus === "paid";
+}
+
 function orderFingerprint(orders) {
   return (orders || [])
-    .map((o) => `${o.id}:${o.status}:${(o.files || []).length}:${o.countSheet?.id || ""}`)
+    .map((o) => `${o.id}:${o.status}:${o.paymentStatus || "unpaid"}:${(o.files || []).length}:${o.countSheet?.id || ""}`)
     .join("|");
 }
 
@@ -48,7 +94,11 @@ function previewData() {
       {
         id: "ord-preview-1",
         status: "ready",
+        paymentStatus: "paid",
         total: 1100,
+        email: "preview@maxcheermusic.com",
+        method: "paypal",
+        poNumber: "",
         teamName: "Senior Elite",
         gym: "MAX Athletics",
         coachFirst: "Jordan",
@@ -65,7 +115,11 @@ function previewData() {
       {
         id: "ord-preview-2",
         status: "in-progress",
+        paymentStatus: "unpaid",
         total: 750,
+        email: "preview@maxcheermusic.com",
+        method: "venmo",
+        poNumber: "",
         teamName: "JV Gold",
         gym: "MAX Athletics",
         coachFirst: "Jordan",
@@ -77,6 +131,27 @@ function previewData() {
         songs: ["", "", "", "", ""],
         countSheet: null,
         createdAt: "2026-09-12T15:30:00.000Z",
+        files: [],
+      },
+      {
+        id: "ord-preview-3",
+        status: "received",
+        paymentStatus: "unpaid",
+        total: 600,
+        email: "preview@maxcheermusic.com",
+        method: "School PO",
+        poNumber: "PO-4412",
+        teamName: "Novice White",
+        gym: "MAX Athletics",
+        coachFirst: "Jordan",
+        coachLast: "Lee",
+        completionDate: "2026-11-01",
+        teamColors: "White",
+        items: [{ title: "Cheer mix novice", qty: 1 }],
+        voiceover: "",
+        songs: ["", "", "", "", ""],
+        countSheet: null,
+        createdAt: "2026-09-14T10:00:00.000Z",
         files: [],
       },
     ],
@@ -104,66 +179,67 @@ function fileToBase64(file) {
 }
 
 function songFields(order) {
-  return [0, 1, 2, 3, 4]
+  return `<div class="song-grid">${[0, 1, 2, 3, 4]
     .map((i) => {
       const value = esc((order.songs || [])[i] || "");
-      return `
-        <label>Song ${i + 1}</label>
-        <input data-song="${order.id}" data-i="${i}" value="${value}" />`;
+      return `<label class="song-field">Song ${i + 1}<input data-song="${order.id}" data-i="${i}" value="${value}" /></label>`;
     })
-    .join("");
+    .join("")}</div>`;
 }
 
 function render(data) {
   portalState = data;
+  document.body.classList.add("portal-in");
   const app = document.getElementById("portal-app");
   const login = document.getElementById("portal-login");
   login.hidden = true;
   app.hidden = false;
   const u = data.user;
+  const who = [u.coachFirst, u.coachLast].filter(Boolean).join(" ");
   app.innerHTML = `
     ${isPreview() ? `<p class="hint">Preview with sample data — not a real account.</p>` : ""}
-    <p><button class="btn btn-outline" type="button" id="portal-out">Log out</button></p>
-    <article class="product">
-      <h2>Your info</h2>
-      <p>${esc(u.coachFirst)} ${esc(u.coachLast)}</p>
-      <p>${esc(u.email)}</p>
-      <p>${esc(u.gym)}</p>
-    </article>
+    <p class="portal-toolbar">
+      <span>${esc(who)}${who && u.email ? " · " : ""}${esc(u.email || "")}</span>
+      <button class="btn btn-outline" type="button" id="portal-out">Log out</button>
+    </p>
     ${(data.orders || [])
       .map(
         (o) => `
-      <article class="product">
-        <h2>${esc(o.teamName || "Order")} · $${Number(o.total || 0).toLocaleString("en-US")}</h2>
-        <p class="order-status ${statusClass(o.status)}">${esc(statusLabel(o.status))}</p>
-        <p class="hint">${esc(o.createdAt || "")}</p>
-        <p>Gym: ${esc(o.gym || "")}</p>
-        <p>Coach: ${esc(o.coachFirst || "")} ${esc(o.coachLast || "")}</p>
-        <p>Due: ${esc(o.completionDate || "")}</p>
-        <p>Colors: ${esc(o.teamColors || "")}</p>
-        <p>${(o.items || []).map((i) => `${esc(i.title)} x${i.qty}`).join(", ")}</p>
-        <p>${esc(o.voiceover || "")}</p>
+      <article class="product portal-order">
+        <div class="portal-order-head">
+          <h2>${esc(o.teamName || "Order")} · $${Number(o.total || 0).toLocaleString("en-US")}</h2>
+          <div class="order-flags">
+            <p class="order-status ${statusClass(o.status)}">${esc(statusLabel(o.status))}</p>
+            <p class="order-pay ${isPaid(o) ? "is-paid" : "is-unpaid"}">${isPaid(o) ? "Paid" : "Not paid"}</p>
+          </div>
+        </div>
+        ${checkoutFacts(o)}
+        <div class="song-box portal-mix${(o.files || []).length ? " is-ready" : ""}">
+          <p class="field-label">Finished mix</p>
+          ${(o.files || []).length
+            ? (o.files || [])
+                .map((f) => `<p><a class="btn" href="${downloadUrl(o, f, data.auth)}">Download ${esc(f.name)}</a></p>`)
+                .join("")
+            : `<p class="hint">MAX will post the mix here when it is ready.</p>`}
+        </div>
         <div class="song-box">
           <p class="field-label">Your 5 songs</p>
-          <p class="hint">Pick songs at <a href="https://songsforcheer.com" target="_blank" rel="noreferrer">songsforcheer.com</a>, then type the names here.</p>
+          <p class="hint">Type names from <a href="https://songsforcheer.com" target="_blank" rel="noreferrer">songsforcheer.com</a>.</p>
           ${songFields(o)}
           <p><button class="btn" type="button" data-save-songs="${o.id}">Save songs</button></p>
           <p class="hint" data-song-status="${o.id}"></p>
         </div>
         <div class="song-box">
           <p class="field-label">Count sheet PDF</p>
-          <p class="hint">Download the fillable sheet from <a href="sheets.html">8 Count Sheets</a>, type in the counts, save it, then upload the PDF here.</p>
+          <p class="hint">Fill and upload from <a href="sheets.html">8 Count Sheets</a>.</p>
           ${
             o.countSheet
               ? `<p><a class="btn btn-outline" href="${downloadUrl(o, o.countSheet, data.auth)}">Download ${esc(o.countSheet.name)}</a></p>`
-              : `<p class="hint">No count sheet uploaded yet.</p>`
+              : `<p class="hint">No count sheet yet.</p>`
           }
           <input data-sheet="${o.id}" type="file" accept="application/pdf,.pdf" />
           <p class="hint" data-sheet-status="${o.id}"></p>
         </div>
-        ${(o.files || [])
-          .map((f) => `<p><a class="btn" href="${downloadUrl(o, f, data.auth)}">Download ${esc(f.name)}</a></p>`)
-          .join("") || `<p class="hint">Your mix will show here when MAX uploads it.</p>`}
       </article>`
       )
       .join("") || `<p class="hint">No orders on this account yet.</p>`}

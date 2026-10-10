@@ -6,6 +6,9 @@ const {
   adminPassword,
   saveUpload,
   publicOrder,
+  migrateClipsFromProducts,
+  youtubeIdFromUrl,
+  inferSampleKind,
 } = require("../lib/store");
 const {
   clientIp,
@@ -43,9 +46,7 @@ function readBody(req) {
 }
 
 function inferKind(url, kind) {
-  if (String(kind || "").toLowerCase() === "video") return "video";
-  if (/\.(mp4|mov|webm|m4v|avi|mkv)(\?|$)/i.test(String(url || ""))) return "video";
-  return "audio";
+  return inferSampleKind(url, kind);
 }
 
 function adminPayload(store) {
@@ -83,6 +84,8 @@ const CLIP_CONTENT_TYPES = [
   "video/avi",
   "video/3gpp",
   "application/octet-stream",
+  "application/zip",
+  "application/x-zip-compressed",
 ];
 
 module.exports = async (req, res) => {
@@ -120,6 +123,12 @@ module.exports = async (req, res) => {
   try {
     if (action === "load") {
       const store = await getStore();
+      if (!store.clipsMigrated) {
+        if (!Array.isArray(store.clips)) migrateClipsFromProducts(store);
+        store.clipsMigrated = true;
+        await saveStore(store);
+        return res.status(200).json(adminPayload(store));
+      }
       return res.status(200).json(adminPayload(store));
     }
 
@@ -174,14 +183,16 @@ module.exports = async (req, res) => {
       return res.status(200).json(saved);
     }
 
-    if (action === "sample-token" || action === "clip-token") {
+    if (action === "sample-token" || action === "clip-token" || action === "mix-token") {
       const productId = String(body.productId || "").trim();
-      const filename = String(body.filename || "sample.mp3");
+      const filename = String(body.filename || (action === "mix-token" ? "mix.mp3" : "sample.mp3"));
       const safe = filename.replace(/[^a-zA-Z0-9._-]/g, "-");
       const pathname =
-        action === "sample-token" && productId
-          ? `samples/${productId}/${Date.now()}-${safe}`
-          : `clips/${Date.now()}-${safe}`;
+        action === "mix-token"
+          ? `mixes/${Date.now()}-${safe}`
+          : action === "sample-token" && productId
+            ? `samples/${productId}/${Date.now()}-${safe}`
+            : `clips/${Date.now()}-${safe}`;
       const blobToken = process.env.BLOB_READ_WRITE_TOKEN;
       if (!blobToken) return res.status(500).json({ error: "Storage is not connected." });
       const { generateClientTokenFromReadWriteToken } = require("@vercel/blob/client");
@@ -193,7 +204,8 @@ module.exports = async (req, res) => {
         allowedContentTypes: CLIP_CONTENT_TYPES,
         maximumSizeInBytes: 500 * 1024 * 1024,
       });
-      return res.status(200).json({ clientToken, pathname });
+      const storeId = String(blobToken.split("_")[3] || "");
+      return res.status(200).json({ clientToken, pathname, storeId });
     }
 
     if (action === "sample-save") {
@@ -221,23 +233,29 @@ module.exports = async (req, res) => {
     }
 
     if (action === "clip-add") {
-      const url = String(body.url || "").trim();
       const name = String(body.name || "").trim().slice(0, 120);
-      if (!url) return res.status(400).json({ error: "Missing clip" });
+      const youtubeId = youtubeIdFromUrl(body.url || body.youtube || "");
+      const url = youtubeId
+        ? `https://www.youtube.com/watch?v=${youtubeId}`
+        : String(body.url || "").trim();
+      if (!url) return res.status(400).json({ error: "Add a music file, a video file, or a YouTube link." });
+      if (!name) return res.status(400).json({ error: "Add a sample name." });
+      const kind = inferKind(url, youtubeId ? "youtube" : body.kind);
       const store = await getStore();
       if (!Array.isArray(store.clips)) store.clips = [];
       store.clips.push({
-        id: `clip-${Date.now()}`,
+        id: youtubeId ? `yt-${youtubeId}-${Date.now()}` : `clip-${Date.now()}`,
         name,
         url,
-        kind: inferKind(url, body.kind),
+        kind,
+        youtubeId: youtubeId || "",
         published: body.published !== false,
         sort: store.clips.length,
         createdAt: Date.now(),
       });
       const ok = await saveStore(store);
       if (!ok) return res.status(500).json({ error: "Could not save sample." });
-      return res.status(200).json(adminPayload(await getStore()));
+      return res.status(200).json(adminPayload(store));
     }
 
     if (action === "clip-update") {
@@ -269,16 +287,28 @@ module.exports = async (req, res) => {
     }
 
     if (action === "clip-delete") {
-      const clipId = String(body.clipId || body.id || "").trim();
+      let clipId = String(body.clipId || body.id || "").trim();
+      try {
+        clipId = decodeURIComponent(clipId);
+      } catch {}
       if (!clipId) return res.status(400).json({ error: "Missing clip" });
       const store = await getStore();
       if (!Array.isArray(store.clips)) store.clips = [];
-      const removed = store.clips.find((c) => c.id === clipId || c.url === clipId);
-      store.clips = store.clips.filter((c) => c.id !== clipId && c.url !== clipId);
+      const match = (c) => c.id === clipId || c.url === clipId || c.youtubeId === clipId;
+      const removed = store.clips.find(match);
+      store.clips = store.clips.filter((c) => !match(c));
       store.clips.forEach((c, i) => {
         c.sort = i;
       });
-      if (removed?.url && process.env.BLOB_READ_WRITE_TOKEN && !process.env.MAX_TEST_STORE) {
+      const gone = removed?.url || clipId;
+      for (const product of store.products || []) {
+        product.samples = (product.samples || []).filter((s) => s.url !== gone && s.id !== clipId);
+        if (product.sampleUrl === gone) {
+          product.sampleUrl = "";
+          product.sampleName = "";
+        }
+      }
+      if (removed?.url && !youtubeIdFromUrl(removed.url) && process.env.BLOB_READ_WRITE_TOKEN && !process.env.MAX_TEST_STORE) {
         try {
           const { del } = require("@vercel/blob");
           await del(removed.url, { token: process.env.BLOB_READ_WRITE_TOKEN });
@@ -286,9 +316,9 @@ module.exports = async (req, res) => {
           console.error("clip blob delete failed", err && err.message);
         }
       }
-      const ok = await saveStore(store);
+      const ok = await saveStore(store, { mergeSamples: false });
       if (!ok) return res.status(500).json({ error: "Could not remove sample." });
-      return res.status(200).json(adminPayload(await getStore()));
+      return res.status(200).json(adminPayload(store));
     }
 
     if (action === "sample-delete") {
@@ -308,11 +338,18 @@ module.exports = async (req, res) => {
           console.error("sample blob delete failed", err && err.message);
         }
       }
+      const gone = removed?.url || sampleId;
+      if (Array.isArray(store.clips)) {
+        store.clips = store.clips.filter((c) => c.url !== gone && c.id !== sampleId);
+      }
       const last = product.samples[product.samples.length - 1];
       product.sampleUrl = last ? last.url : "";
       product.sampleKind = last ? last.kind : "audio";
       if (last?.name) product.sampleName = last.name;
-      else if (!last) product.sampleName = "";
+      else {
+        product.sampleName = "";
+        product.sampleUrl = "";
+      }
       const ok = await saveStore(store, { mergeSamples: false });
       if (!ok) return res.status(500).json({ error: "Could not remove sample." });
       return res.status(200).json(adminPayload(await getStore()));
@@ -322,20 +359,32 @@ module.exports = async (req, res) => {
       const store = await getStore();
       const order = findOrder(store, body.orderId);
       if (!order) return res.status(404).json({ error: "Order not found" });
-      if (!body.filename || !body.data) return res.status(400).json({ error: "Missing file" });
-      const buffer = Buffer.from(body.data, "base64");
-      const saved = await saveUpload(body.filename, buffer, "mixes");
-      order.files = order.files || [];
+      const filename = String(body.filename || "mix.mp3").trim();
+      const directUrl = String(body.url || "").trim();
+      let url = directUrl;
+      let file = directUrl;
+      if (!url) {
+        if (!body.data) return res.status(400).json({ error: "Missing file" });
+        const buffer = Buffer.from(body.data, "base64");
+        if (buffer.length > 3.2 * 1024 * 1024) {
+          return res.status(400).json({ error: "Mix is too large for this upload path. Try again — large mixes now upload directly." });
+        }
+        const saved = await saveUpload(filename, buffer, "mixes");
+        url = saved.url;
+        file = saved.file || saved.url;
+      }
+      order.files = Array.isArray(order.files) ? order.files : [];
       order.files.push({
         id: `file-${Date.now()}`,
-        name: body.filename,
-        url: saved.url,
-        file: saved.file || saved.url,
+        name: filename,
+        url,
+        file,
+        kind: "mixes",
       });
       setProductionStatus(order, "ready");
       const attached = await saveStore(store);
       if (!attached) return res.status(500).json({ error: "Could not save mix upload." });
-      return res.status(200).json(adminPayload(await getStore()));
+      return res.status(200).json(adminPayload(store));
     }
 
     if (action === "status") {
@@ -345,7 +394,7 @@ module.exports = async (req, res) => {
       setProductionStatus(order, body.status);
       const ok = await saveStore(store);
       if (!ok) return res.status(500).json({ error: "Could not save status." });
-      return res.status(200).json(adminPayload(await getStore()));
+      return res.status(200).json(adminPayload(store));
     }
 
     if (action === "order-payment") {
@@ -355,17 +404,17 @@ module.exports = async (req, res) => {
       const result = recordPayment(order, body);
       const ok = await saveStore(store);
       if (!ok) return res.status(500).json({ error: "Could not save payment." });
-      return res.status(200).json({ ...adminPayload(await getStore()), duplicate: result.duplicate });
+      return res.status(200).json({ ...adminPayload(store), duplicate: result.duplicate });
     }
 
     if (action === "order-payment-status") {
       const store = await getStore();
       const order = findOrder(store, body.orderId);
       if (!order) return res.status(404).json({ error: "Order not found" });
-      setPaymentStatus(order, body.paymentStatus);
+      setPaymentStatus(order, body.paymentStatus === "paid" ? "paid" : "unpaid");
       const ok = await saveStore(store);
       if (!ok) return res.status(500).json({ error: "Could not save payment status." });
-      return res.status(200).json(adminPayload(await getStore()));
+      return res.status(200).json(adminPayload(store));
     }
 
     if (action === "order-notes") {

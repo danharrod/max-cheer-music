@@ -235,22 +235,30 @@ function hydrateFromCatalog() {
     samples.innerHTML = clips.length
       ? clips
           .map((s) => {
-            const media =
-              s.kind === "video"
-                ? `<video class="sample-video" data-audio="${s.id}" src="${s.url}" preload="metadata" playsinline webkit-playsinline></video>`
-                : `<audio data-audio="${s.id}" src="${s.url}" preload="metadata" crossorigin="anonymous"></audio>`;
+            const youtube = s.kind === "youtube" && s.youtubeId;
+            const video = s.kind === "video";
+            const safeId = String(s.id).replace(/"/g, "");
+            const media = youtube
+              ? `<div class="sample-video sample-youtube" data-youtube="${safeId}" data-ytid="${s.youtubeId}" hidden></div>`
+              : video
+                ? `<video class="sample-video" data-audio="${safeId}" src="${s.url}" preload="metadata" playsinline webkit-playsinline></video>`
+                : `<audio data-audio="${safeId}" src="${s.url}" preload="metadata" crossorigin="anonymous"></audio>`;
             return `
-      <article class="sample${s.kind === "video" ? " has-video" : ""}" data-sample-row="${s.id}">
-        <button class="play" type="button" data-play="${s.id}" aria-label="Play ${s.name}">Play</button>
+      <article class="sample${video || youtube ? " has-video" : ""}" data-sample-row="${safeId}">
+        <button class="play" type="button" data-play="${safeId}" aria-label="Play ${s.name}">Play</button>
         <div class="sample-meta">
           <h3>${s.name}</h3>
-          ${s.kind === "video" ? "" : `<canvas class="wave" data-wave="${s.id}" aria-hidden="true"></canvas>`}
-          <div class="sample-time">
-            <span data-elapsed="${s.id}">0:00</span>
-            <input class="sample-seek" data-seek="${s.id}" type="range" min="0" max="0" value="0" step="0.1" aria-label="Seek ${s.name}" disabled />
-            <span data-duration="${s.id}">0:00</span>
+          ${video || youtube ? "" : `<canvas class="wave" data-wave="${safeId}" aria-hidden="true"></canvas>`}
+          ${
+            youtube
+              ? `<p class="sample-status">YouTube</p>`
+              : `<div class="sample-time">
+            <span data-elapsed="${safeId}">0:00</span>
+            <input class="sample-seek" data-seek="${safeId}" type="range" min="0" max="0" value="0" step="0.1" aria-label="Seek ${s.name}" disabled />
+            <span data-duration="${safeId}">0:00</span>
           </div>
-          <p class="sample-status" data-sample-status="${s.id}">Loading…</p>
+          <p class="sample-status" data-sample-status="${safeId}">Loading…</p>`
+          }
         </div>
         ${media}
       </article>`;
@@ -262,14 +270,23 @@ function hydrateFromCatalog() {
 }
 
 function collectSampleClips() {
-  const fromCatalog = (window.MAX_CLIPS || []).filter((s) => s && s.url);
-  if (fromCatalog.length) {
-    return fromCatalog.map((s, i) => ({
-      id: s.id || `clip-${i}`,
-      name: s.name || "Sample",
-      url: s.url,
-      kind: s.kind === "video" || /\.(mp4|mov|webm|m4v)(\?|$)/i.test(s.url || "") ? "video" : "audio",
-    }));
+  if (Array.isArray(window.MAX_CLIPS)) {
+    return window.MAX_CLIPS.filter((s) => s && s.url).map((s, i) => {
+      const youtubeId = s.youtubeId || youtubeIdFromLink(s.url);
+      const kind =
+        s.kind === "youtube" || youtubeId
+          ? "youtube"
+          : s.kind === "video" || /\.(mp4|mov|webm|m4v)(\?|$)/i.test(s.url || "")
+            ? "video"
+            : "audio";
+      return {
+        id: s.id || `clip-${i}`,
+        name: s.name || "Sample",
+        url: s.url,
+        kind,
+        youtubeId,
+      };
+    });
   }
   const clips = [];
   productList().forEach((p) => {
@@ -289,6 +306,22 @@ function collectSampleClips() {
     });
   });
   return clips;
+}
+
+function youtubeIdFromLink(raw) {
+  const value = String(raw || "").trim();
+  const match = value.match(/(?:youtube\.com\/(?:watch\?.*v=|embed\/|shorts\/|live\/|v\/)|youtu\.be\/)([A-Za-z0-9_-]{11})/i);
+  return match ? match[1] : "";
+}
+
+function stopYoutube(id) {
+  document.querySelectorAll("[data-youtube]").forEach((holder) => {
+    if (id && holder.getAttribute("data-youtube") === id) return;
+    holder.innerHTML = "";
+    holder.hidden = true;
+    const otherId = holder.getAttribute("data-youtube");
+    setPlayButton(otherId, false, document.querySelector(`[data-sample-row="${otherId}"] h3`)?.textContent);
+  });
 }
 
 function formatTime(value) {
@@ -313,9 +346,36 @@ function pauseOtherSamples(id) {
     setPlayButton(otherId, false, document.querySelector(`[data-sample-row="${otherId}"] h3`)?.textContent);
     stopWave(otherId);
   });
+  stopYoutube(id);
+}
+
+function toggleYoutube(id) {
+  const holder = document.querySelector(`[data-youtube="${id}"]`);
+  const play = document.querySelector(`[data-play="${id}"]`);
+  const name = document.querySelector(`[data-sample-row="${id}"] h3`)?.textContent || "sample";
+  if (!holder || !play) return;
+  pauseOtherSamples(id);
+  stopAllWaves(id);
+  if (!holder.hidden && holder.innerHTML) {
+    holder.innerHTML = "";
+    holder.hidden = true;
+    setPlayButton(id, false, name);
+    return;
+  }
+  const yt = String(holder.getAttribute("data-ytid") || "").replace(/[^A-Za-z0-9_-]/g, "").slice(0, 11);
+  if (!yt) return;
+  holder.hidden = false;
+  const title = String(name || "YouTube sample").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  holder.innerHTML = `<iframe class="sample-video" src="https://www.youtube-nocookie.com/embed/${yt}?autoplay=1&rel=0" title="${title}" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>`;
+  setPlayButton(id, true, name);
 }
 
 function toggleSample(id) {
+  const youtube = document.querySelector(`[data-youtube="${id}"]`);
+  if (youtube) {
+    toggleYoutube(id);
+    return;
+  }
   const media = document.querySelector(`[data-audio="${id}"]`);
   const play = document.querySelector(`[data-play="${id}"]`);
   const status = document.querySelector(`[data-sample-status="${id}"]`);

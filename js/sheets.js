@@ -48,10 +48,16 @@ function rowsHtml(from, to, data) {
 function table(from, to, data) {
   return `
     <table class="count-grid">
+      <colgroup>
+        <col class="col-section" />
+        <col class="col-num" />
+        <col class="col-count" /><col class="col-count" /><col class="col-count" /><col class="col-count" />
+        <col class="col-count" /><col class="col-count" /><col class="col-count" /><col class="col-count" />
+      </colgroup>
       <thead>
         <tr>
-          <th>Routine section</th>
-          <th></th>
+          <th class="sheet-section">Routine<br />section</th>
+          <th class="sheet-num"></th>
           <th>1</th><th>2</th><th>3</th><th>4</th>
           <th>5</th><th>6</th><th>7</th><th>8</th>
         </tr>

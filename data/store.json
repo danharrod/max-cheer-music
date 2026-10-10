@@ -13,7 +13,9 @@
       "description": "School team mix built for game day, pep rallies, and competition — sized to your routine.",
       "sampleName": "",
       "sampleUrl": "",
-      "active": true
+      "active": true,
+      "samples": [],
+      "sampleKind": "audio"
     },
     {
       "id": "novice",
@@ -23,7 +25,9 @@
       "description": "Novice mix that still hits. Clear counts, strong energy, and a crowd-ready finish.",
       "sampleName": "",
       "sampleUrl": "",
-      "active": true
+      "active": true,
+      "samples": [],
+      "sampleKind": "audio"
     },
     {
       "id": "prep",
@@ -33,7 +37,9 @@
       "description": "All-star prep mix with the same punch as elite tracks, cut for prep timing and skill sets.",
       "sampleName": "",
       "sampleUrl": "",
-      "active": true
+      "active": true,
+      "samples": [],
+      "sampleKind": "audio"
     },
     {
       "id": "allstar",
@@ -41,11 +47,17 @@
       "title": "Allstar Mix",
       "price": 1100,
       "description": "Full all-star mix. Competition energy, clean hits, and a mix that stays loud from the first 8-count.",
-      "sampleName": "Worlds Allstar Demo",
+      "sampleName": "",
       "sampleUrl": "",
-      "active": true
+      "active": true,
+      "samples": [],
+      "sampleKind": "audio"
     }
   ],
   "users": [],
-  "orders": []
+  "orders": [],
+  "revision": 7,
+  "clips": [],
+  "updatedAt": "2026-10-10T15:34:00.459Z",
+  "clipsMigrated": true
 }
