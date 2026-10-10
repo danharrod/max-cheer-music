@@ -58,13 +58,143 @@ function orderNote(order, items, total) {
   ].join(" | ");
 }
 
-function firstInvalid(form) {
-  const field = [...form.querySelectorAll("input, textarea, select")].find((el) => !el.checkValidity());
-  if (!field) return false;
+function stepFields(step) {
+  return [...step.querySelectorAll(".step-body input, .step-body textarea, .step-body select")];
+}
+
+function showInvalid(field) {
   field.focus({ preventScroll: false });
   field.scrollIntoView({ block: "center", behavior: "smooth" });
   if (typeof field.reportValidity === "function") field.reportValidity();
+}
+
+function enforceMinLength(el) {
+  el.setCustomValidity("");
+  const min = el.minLength;
+  if (min > 0 && el.value && el.value.length < min) {
+    el.setCustomValidity(`Use at least ${min} characters.`);
+  }
+}
+
+function sectionInvalid(step) {
+  const field = stepFields(step).find((el) => {
+    enforceMinLength(el);
+    return !el.checkValidity();
+  });
+  if (!field) return false;
+  showInvalid(field);
   return true;
+}
+
+function stepRecap(form, step) {
+  if (step.dataset.step === "contact") {
+    const coach = `${form.coachFirst.value.trim()} ${form.coachLast.value.trim()}`.trim();
+    return [form.gym.value.trim(), coach, form.email.value.trim()].filter(Boolean).join(" · ");
+  }
+  if (step.dataset.step === "team") {
+    return [form.teamName.value.trim(), form.completionDate.value, form.teamColors.value.trim()].filter(Boolean).join(" · ");
+  }
+  if (step.dataset.step === "portal") return "Portal password is set";
+  return "";
+}
+
+function initCheckoutSteps(form) {
+  const steps = [...form.querySelectorAll(".checkout-step")];
+  if (!steps.length) {
+    return {
+      openInvalid() {
+        const field = [...form.querySelectorAll("input, textarea, select")].find((el) => {
+          enforceMinLength(el);
+          return !el.checkValidity();
+        });
+        if (!field) return false;
+        showInvalid(field);
+        return true;
+      },
+    };
+  }
+
+  let index = 0;
+
+  function apply() {
+    steps.forEach((step, i) => {
+      const current = i === index;
+      const done = i < index;
+      step.classList.toggle("is-current", current);
+      step.classList.toggle("is-done", done);
+      step.classList.toggle("is-locked", i > index);
+      stepFields(step).forEach((el) => {
+        el.disabled = !current;
+      });
+      const body = step.querySelector(".step-body");
+      const recapEl = step.querySelector(".step-recap");
+      const edit = step.querySelector(".step-edit");
+      if (body) body.hidden = !current;
+      if (recapEl) {
+        recapEl.hidden = !done;
+        recapEl.textContent = done ? stepRecap(form, step) : "";
+      }
+      if (edit) edit.hidden = !done;
+    });
+    const onPayment = steps[index]?.dataset.step === "payment";
+    const actions = document.querySelector(".checkout-actions");
+    if (actions) actions.hidden = !onPayment;
+    setPayEnabled(onPayment);
+  }
+
+  function open(next, { focus = true, scroll = true } = {}) {
+    index = next;
+    apply();
+    const step = steps[index];
+    if (!step) return;
+    if (scroll) step.scrollIntoView({ block: "start", behavior: "smooth" });
+    if (!focus) return;
+    if (step.dataset.step === "payment") {
+      document.getElementById("poNumber")?.focus({ preventScroll: true });
+      return;
+    }
+    const field = stepFields(step).find((el) => el.required && !el.value.trim()) || stepFields(step)[0];
+    field?.focus({ preventScroll: true });
+  }
+
+  form.addEventListener("submit", (event) => event.preventDefault());
+  form.addEventListener("click", (event) => {
+    const nextBtn = event.target.closest(".step-next");
+    if (nextBtn) {
+      const step = nextBtn.closest(".checkout-step");
+      if (steps.indexOf(step) !== index) return;
+      if (sectionInvalid(step)) return;
+      open(Math.min(steps.length - 1, index + 1));
+      return;
+    }
+    const editBtn = event.target.closest(".step-edit");
+    if (!editBtn) return;
+    const i = steps.indexOf(editBtn.closest(".checkout-step"));
+    if (i >= 0) open(i);
+  });
+
+  apply();
+
+  return {
+    openInvalid() {
+      steps.forEach((step) => stepFields(step).forEach((el) => {
+        el.disabled = false;
+      }));
+      const field = [...form.querySelectorAll("input, textarea, select")].find((el) => {
+        enforceMinLength(el);
+        return !el.checkValidity();
+      });
+      if (!field) {
+        apply();
+        return false;
+      }
+      const i = steps.indexOf(field.closest(".checkout-step"));
+      if (i >= 0) index = i;
+      apply();
+      showInvalid(field);
+      return true;
+    },
+  };
 }
 
 function setPayEnabled(on) {
@@ -91,6 +221,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   const form = document.getElementById("order-form");
   const status = document.getElementById("pay-status");
   const items = MaxCart.items();
+  const steps = initCheckoutSteps(form);
   let submitting = false;
 
   if (!items.length) {
@@ -111,7 +242,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   async function pay(method) {
     if (submitting) return;
-    if (firstInvalid(form)) {
+    if (steps.openInvalid()) {
       status.textContent = "Check the highlighted field, then try again. Your answers stay on this page.";
       return;
     }

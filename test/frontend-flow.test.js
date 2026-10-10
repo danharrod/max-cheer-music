@@ -163,6 +163,10 @@ test("shop and checkout copy match the real flow", () => {
   assert.match(checkout, /Place order and open PayPal/);
   assert.match(checkout, /not a confirmed deadline/i);
   assert.match(checkout, /does not mark the order paid/i);
+  assert.match(checkout, /data-step="contact"/);
+  assert.match(checkout, /data-step="payment"/);
+  assert.match(checkout, /class="btn step-next"/);
+  assert.match(checkoutJs, /initCheckoutSteps/);
   assert.doesNotMatch(checkoutJs, /localStorage\.setItem\("max-music-last-order"/);
   assert.match(cart, /Escape/);
   assert.match(cart, /collectSampleClips/);
