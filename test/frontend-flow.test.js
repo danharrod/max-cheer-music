@@ -569,4 +569,7 @@ test("admin status change updates one mix on a shared order", async () => {
   const saved = (await getStore()).orders.find((item) => item.id === placed.body.orderId);
   assert.equal(saved.mixes[0].status, "in-progress");
   assert.equal(saved.mixes[1].status, "received");
+  const adminJs = fs.readFileSync(path.join(__dirname, "..", "js/admin.js"), "utf8");
+  assert.match(adminJs, /data-set-status=/);
+  assert.doesNotMatch(adminJs, /<select class="order-status-select"/);
 });

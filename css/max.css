@@ -1190,7 +1190,50 @@ body[data-page="portal"] .song-box {
   padding: 0;
   cursor: pointer;
 }
-.order-status-select { min-width: 148px; margin: 0; }
+.order-status-menu { position: relative; min-width: 168px; }
+.order-status-menu.is-open { z-index: 30; }
+.order-status-current,
+.order-status-option {
+  width: 100%;
+  margin: 0;
+  border: 0;
+  background: #111;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.order-status-current {
+  border: 1px solid #ffffff24;
+  border-radius: 4px;
+  padding: 8px 28px 8px 10px;
+  position: relative;
+}
+.order-status-current::after {
+  content: "";
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  border: 5px solid transparent;
+  border-top-color: #fff;
+  transform: translateY(-2px);
+}
+.order-status-options {
+  position: absolute;
+  z-index: 31;
+  top: calc(100% + 4px);
+  left: 0;
+  min-width: 100%;
+  display: grid;
+  gap: 2px;
+  padding: 4px;
+  background: #161616;
+  border: 1px solid #ffffff24;
+  border-radius: 4px;
+}
+.order-status-option { border-radius: 4px; padding: 8px 10px; }
+.order-status-option.is-on,
+.order-status-option:hover { background: #17306a; }
 .portal-team-status { display: flex; align-items: center; gap: 8px; margin: 0 0 8px; }
 .order-due {
   display: inline-block;

@@ -355,12 +355,14 @@ function renderClips() {
 function statusSelect(order, mix) {
   const current = mixStatus(mix);
   const who = mix.teamName || mix.title || "this team";
-  const selectId = `status-${order.id}-${mix.id}`;
-  return `<select class="order-status-select" id="${esc(selectId)}" name="${esc(selectId)}" autocomplete="off" data-status="${esc(order.id)}" data-mix="${esc(mix.id)}" aria-label="Production status for ${esc(who)}">
-    ${PRODUCTION_OPTIONS.map(
-      (option) => `<option value="${option.value}" ${current === option.value ? "selected" : ""}>${option.label}</option>`
-    ).join("")}
-  </select>`;
+  const options = PRODUCTION_OPTIONS.map((option) => {
+    const on = current === option.value ? " is-on" : "";
+    return `<button type="button" class="order-status-option${on}" data-set-status="${esc(order.id)}" data-mix="${esc(mix.id)}" data-value="${option.value}">${option.label}</button>`;
+  }).join("");
+  return `<div class="order-status-menu">
+    <button type="button" class="order-status-current" data-status-toggle aria-haspopup="listbox" aria-expanded="false" aria-label="Production status for ${esc(who)}">${esc(productionLabel(current))}</button>
+    <div class="order-status-options" role="listbox" hidden>${options}</div>
+  </div>`;
 }
 
 function mixLine(mix, index, order) {
@@ -818,21 +820,6 @@ document.addEventListener("DOMContentLoaded", async () => {
       }
       return;
     }
-    const status = e.target.closest("select.order-status-select");
-    if (status) {
-      const mixId = String(status.dataset.mix || "").trim();
-      if (!mixId) {
-        setStatus("Choose one team.");
-        return;
-      }
-      try {
-        applyState(await api({ action: "status", orderId: status.dataset.status, mixId, status: status.value }));
-        setStatus("Team status updated. It now shows on that team's row in the customer portal.");
-      } catch (err) {
-        setStatus(err.message);
-      }
-      return;
-    }
     const payment = e.target.closest("[data-payment]");
     if (payment) {
       try {
@@ -870,7 +857,45 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
   });
 
+  function closeStatusMenus() {
+    document.querySelectorAll(".order-status-options").forEach((panel) => {
+      panel.hidden = true;
+    });
+    document.querySelectorAll("[data-status-toggle]").forEach((btn) => btn.setAttribute("aria-expanded", "false"));
+    document.querySelectorAll(".order-status-menu.is-open").forEach((menu) => menu.classList.remove("is-open"));
+  }
+
   document.body.addEventListener("click", async (e) => {
+    const setStatusBtn = e.target.closest("[data-set-status]");
+    if (setStatusBtn) {
+      const mixId = String(setStatusBtn.dataset.mix || "").trim();
+      const next = setStatusBtn.dataset.value;
+      if (!mixId || !next) {
+        setStatus("Choose one team.");
+        return;
+      }
+      try {
+        applyState(await api({ action: "status", orderId: setStatusBtn.dataset.setStatus, mixId, status: next }));
+        setStatus("Team status updated. It now shows on that team's row in the customer portal.");
+      } catch (err) {
+        setStatus(err.message);
+      }
+      return;
+    }
+    const statusToggle = e.target.closest("[data-status-toggle]");
+    if (statusToggle) {
+      const menu = statusToggle.closest(".order-status-menu");
+      const panel = menu?.querySelector(".order-status-options");
+      const willOpen = panel?.hidden !== false;
+      closeStatusMenus();
+      if (willOpen && panel && menu) {
+        panel.hidden = false;
+        statusToggle.setAttribute("aria-expanded", "true");
+        menu.classList.add("is-open");
+      }
+      return;
+    }
+    if (!e.target.closest(".order-status-menu")) closeStatusMenus();
     const orderTab = e.target.closest("[data-order-tab]");
     if (orderTab) {
       orderUi.tab = orderTab.dataset.orderTab;
