@@ -252,6 +252,112 @@ test("YouTube sample URLs parse into catalog clips", () => {
   assert.equal(catalog.clips[0].url, "https://www.youtube.com/watch?v=dQw4w9WgXcQ");
 });
 
+test("portal quote and invoice use the business details, and a W-9 stays available", async () => {
+  const adminApi = require("../api/admin");
+  const download = require("../api/download");
+  const docsDir = path.join(__dirname, "..", "assets", "docs");
+  try {
+  const login = await call(adminApi, { action: "login", password: "test-admin-pass", token: "" });
+  assert.equal(login.statusCode, 200);
+  const uploaded = await call(adminApi, {
+    action: "w9",
+    token: login.body.token,
+    filename: "AH-Athletics-W9.pdf",
+    data: Buffer.from("%PDF-1.1\n").toString("base64"),
+  });
+  assert.equal(uploaded.statusCode, 200);
+  assert.equal(uploaded.body.settings.w9.name, "AH-Athletics-W9.pdf");
+
+  const saved = await call(adminApi, {
+    action: "save",
+    token: login.body.token,
+    revision: uploaded.body.revision,
+    store: {
+      settings: { paypalMe: "danharrod12", venmo: "daniel-harrod-3", email: "maxcheermusic@gmail.com" },
+      products: uploaded.body.products,
+    },
+  });
+  assert.equal(saved.statusCode, 200);
+  assert.equal(saved.body.settings.w9.name, "AH-Athletics-W9.pdf");
+
+  const placed = await call(orderApi, {
+    method: "School PO",
+    idempotencyKey: "quote-key-1",
+    email: "quote@example.com",
+    password: "portal1",
+    gym: "Quote Gym",
+    coachFirst: "Pat",
+    coachLast: "Lee",
+    teamName: "Senior",
+    teamColors: "Blue",
+    voiceover: "Hits",
+    poNumber: "PO-9",
+    completionDate: "2026-11-01",
+    items: [{ id: "allstar", qty: 1 }],
+  });
+  assert.equal(placed.statusCode, 200);
+  const customer = await call(portal, { action: "login", email: "quote@example.com", password: "portal1" });
+  assert.equal(customer.statusCode, 200);
+  assert.equal(customer.body.billing.legalName, "A&H Athletics LLC");
+  assert.equal(customer.body.billing.dba, "MAX Cheer");
+  assert.equal(customer.body.billing.line1, "7495 Wall Triana Hwy");
+  assert.equal(customer.body.billing.city, "Madison");
+  assert.equal(customer.body.billing.state, "AL");
+  assert.equal(customer.body.billing.zip, "35757");
+  assert.equal(customer.body.billing.payableTo, "MAX Cheer");
+  assert.equal(customer.body.billing.paypalMe, "danharrod12");
+  assert.equal(customer.body.billing.venmo, "daniel-harrod-3");
+  assert.equal(customer.body.billing.w9.name, "AH-Athletics-W9.pdf");
+
+  const dated = await call(portal, {
+    action: "invoice-date",
+    email: "quote@example.com",
+    token: customer.body.token,
+    orderId: placed.body.orderId,
+    invoiceDate: "2026-12-01",
+  });
+  assert.equal(dated.statusCode, 200);
+  const order = dated.body.orders.find((item) => item.id === placed.body.orderId);
+  assert.equal(order.invoiceDate, "2026-12-01");
+  const badDate = await call(portal, {
+    action: "invoice-date",
+    email: "quote@example.com",
+    token: customer.body.token,
+    orderId: placed.body.orderId,
+    invoiceDate: "next week",
+  });
+  assert.equal(badDate.statusCode, 400);
+
+  const file = mockRes();
+  await download(
+    {
+      method: "GET",
+      url: `/api/download?email=${encodeURIComponent("quote@example.com")}&token=${customer.body.token}&w9=1`,
+      headers: { host: "127.0.0.1" },
+    },
+    file
+  );
+  assert.equal(file.statusCode, 200);
+  assert.equal(file.headers["Content-Type"], "application/pdf");
+
+  const portalJs = fs.readFileSync(path.join(__dirname, "..", "js/portal.js"), "utf8");
+  const adminJs = fs.readFileSync(path.join(__dirname, "..", "js/admin.js"), "utf8");
+  assert.match(portalJs, /data-doc="quote"/);
+  assert.match(portalJs, /data-doc="invoice"/);
+  assert.match(portalJs, /Check payable to/);
+  assert.match(portalJs, /Invoice date/);
+  assert.match(portalJs, /Quote date/);
+  assert.match(portalJs, /Proof of license/);
+  assert.match(portalJs, /performance and synchronization purposes only/);
+  assert.match(portalJs, /valid for 364 days/);
+  assert.match(portalJs, /100% original or properly licensed/);
+  assert.match(portalJs, /license-watermark/);
+  assert.match(adminJs, /set-w9/);
+  } finally {
+    fs.rmSync(docsDir, { recursive: true, force: true });
+  }
+});
+
 test("existing production statuses stay valid and review is available", () => {
   const { setProductionStatus, normalizeOrder, PRODUCTION_STATUSES } = require("../lib/orders");
   assert.deepEqual(PRODUCTION_STATUSES, ["received", "in-progress", "review", "ready"]);

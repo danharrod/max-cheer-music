@@ -96,9 +96,27 @@ function ownOrder(store, user, orderId) {
   return (store.orders || []).find((o) => o.id === orderId && o.email === user.email);
 }
 
+function billingInfo(store) {
+  const settings = store.settings || {};
+  const w9 = settings.w9?.name ? { name: settings.w9.name } : null;
+  return {
+    legalName: "A&H Athletics LLC",
+    dba: "MAX Cheer",
+    line1: "7495 Wall Triana Hwy",
+    city: "Madison",
+    state: "AL",
+    zip: "35757",
+    payableTo: "MAX Cheer",
+    email: settings.email || "maxcheermusic@gmail.com",
+    paypalMe: String(settings.paypalMe || "danharrod12").replace(/^@/, ""),
+    venmo: String(settings.venmo || "daniel-harrod-3").replace(/^@/, ""),
+    w9,
+  };
+}
+
 function payload(user, store) {
   const orders = (store.orders || []).filter((o) => o.email === user.email).map(publicOrder).reverse();
-  return { user: publicUser(user), orders };
+  return { user: publicUser(user), orders, billing: billingInfo(store) };
 }
 
 async function notifyPortal(order, subject, extra) {
@@ -218,6 +236,19 @@ module.exports = async (req, res) => {
   if (!user) return res.status(401).json({ error: "Please log in." });
 
   if (body.action === "me") {
+    return res.status(200).json(payload(user, store));
+  }
+
+  if (body.action === "invoice-date") {
+    const order = ownOrder(store, user, body.orderId);
+    if (!order) return res.status(404).json({ error: "Order not found" });
+    const day = String(body.invoiceDate || "").trim();
+    if (day && !/^\d{4}-\d{2}-\d{2}$/.test(day)) {
+      return res.status(400).json({ error: "Use a valid invoice date." });
+    }
+    order.invoiceDate = day;
+    const ok = await saveStore(store);
+    if (!ok) return res.status(500).json({ error: "Could not save the invoice date." });
     return res.status(200).json(payload(user, store));
   }
 

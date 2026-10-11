@@ -738,6 +738,197 @@ body[data-page="portal"].portal-in .section {
   width: auto;
   padding: 8px 14px;
 }
+.portal-toolbar-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.portal-doc-links {
+  display: flex;
+  gap: 16px;
+  margin: 10px 0 4px;
+}
+.portal-doc-links button {
+  width: auto;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--blue-hot);
+  text-decoration: underline;
+  cursor: pointer;
+}
+.doc-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 14px;
+}
+.doc-toolbar .btn { width: auto; }
+.doc-sheet {
+  background: #fff;
+  color: #161616;
+  max-width: 820px;
+  margin: 0 0 28px;
+  padding: 32px 32px 36px;
+  border-radius: 2px;
+}
+.doc-sheet p { margin: 0; }
+.doc-sheet a { color: #1636c9; text-decoration: underline; }
+.doc-head, .doc-bill, .doc-pay { display: grid; gap: 2px; }
+.doc-head {
+  grid-template-columns: 1.2fr 0.8fr;
+  gap: 24px;
+  padding-bottom: 18px;
+  border-bottom: 3px solid #1636c9;
+}
+.doc-brand {
+  font-family: var(--font-display);
+  font-size: 40px;
+  letter-spacing: 0.04em;
+  line-height: 1;
+  margin: 0 0 8px;
+}
+.doc-kind {
+  font-family: var(--font-display);
+  font-size: 32px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  text-align: right;
+  margin: 0 0 8px;
+}
+.doc-meta { display: grid; gap: 6px; justify-items: end; text-align: right; }
+.doc-meta span, .doc-label {
+  display: block;
+  color: #666;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.doc-date-edit input {
+  color: #161616;
+  background: #fff;
+  border: 1px solid #c8c8c8;
+  border-radius: 4px;
+  padding: 6px 8px;
+  margin-top: 4px;
+}
+.doc-date-print { display: none; }
+.doc-bill, .doc-pay { margin-top: 18px; }
+.doc-lines {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 18px;
+}
+.doc-lines th, .doc-lines td {
+  text-align: left;
+  padding: 8px 0;
+  border-bottom: 1px solid #e4e4e4;
+}
+.doc-lines th {
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #666;
+}
+.doc-lines td:nth-child(n + 2), .doc-lines th:nth-child(n + 2) { text-align: right; }
+.doc-totals {
+  display: grid;
+  justify-items: end;
+  gap: 4px;
+  margin-top: 12px;
+}
+.doc-totals p { display: flex; gap: 24px; min-width: 220px; justify-content: space-between; }
+.doc-pay { max-width: 460px; }
+.license-sheet {
+  position: relative;
+  overflow: hidden;
+  background: #050404;
+  color: #fff;
+  max-width: 820px;
+  margin: 0 0 28px;
+  padding: 42px 36px 46px;
+  border: 10px solid #2f6bff;
+  box-shadow:
+    inset 0 0 0 2px #ffffff,
+    inset 0 0 0 8px #050404,
+    inset 0 0 0 10px #4d86ff;
+}
+.license-watermark {
+  position: absolute;
+  left: 50%;
+  top: 54%;
+  z-index: 0;
+  margin: 0;
+  transform: translate(-50%, -50%) rotate(-16deg);
+  font-family: var(--font-display);
+  font-size: 168px;
+  letter-spacing: 0.12em;
+  line-height: 1;
+  color: #4d86ff;
+  opacity: 0.16;
+  pointer-events: none;
+  user-select: none;
+  white-space: nowrap;
+}
+.license-body { position: relative; z-index: 1; }
+.license-sheet p { margin: 0; }
+.license-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 24px;
+}
+.license-season {
+  font-family: var(--font-display);
+  font-size: clamp(1.6rem, 3vw, 2.1rem);
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  line-height: 1.05;
+}
+.license-logo { height: 84px; width: auto; }
+.license-sheet .license-title {
+  font-family: var(--font-display);
+  font-size: clamp(2.4rem, 5vw, 3.4rem);
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  line-height: 0.95;
+  margin: 20px 0 18px;
+}
+.license-label {
+  display: inline-block;
+  margin: 0 0 12px;
+  padding-bottom: 4px;
+  border-bottom: 2px solid var(--blue);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.license-rights p + p { margin-top: 12px; }
+.license-rights p:not(.license-label) {
+  color: #d5d5d5;
+  font-size: 15px;
+  line-height: 1.5;
+  max-width: 68ch;
+}
+.license-who {
+  display: grid;
+  gap: 14px;
+  margin-top: 28px;
+  padding-top: 18px;
+  border-top: 1px solid #ffffff22;
+}
+.license-who span {
+  display: block;
+  color: #8d8d8d;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.license-who p { font-size: 18px; font-weight: 700; }
 .portal-order {
   padding: 18px;
   margin: 0 0 14px;
@@ -1150,7 +1341,8 @@ form.count-sheet label {
 }
 @media print {
   @page { size: letter portrait; margin: 0.4in 0.38in; }
-  .announce, .site-header, .site-footer, .no-print, .cart-scrim, .cart-drawer, .sheet-intro { display: none !important; }
+  .announce, .site-header, .site-footer, .no-print, .cart-scrim, .cart-drawer, .sheet-intro,
+  body[data-page="portal"] .page-hero { display: none !important; }
   html, body { background: #fff; color: #111; }
   .section { padding: 0; }
   .wrap { width: 100%; max-width: none; margin: 0; }
@@ -1171,6 +1363,36 @@ form.count-sheet label {
     print-color-adjust: exact;
     -webkit-print-color-adjust: exact;
   }
+  .doc-screen-only, .doc-date-edit { display: none !important; }
+  .doc-date-print { display: block !important; }
+  .doc-sheet {
+    max-width: none;
+    margin: 0;
+    padding: 0;
+    color: #111;
+    background: #fff;
+  }
+  .license-sheet {
+    max-width: none;
+    margin: 0;
+    padding: 28px 24px 32px;
+    border: 8px solid #2f6bff !important;
+    background: #fff !important;
+    color: #111 !important;
+    box-shadow:
+      inset 0 0 0 2px #111,
+      inset 0 0 0 6px #fff,
+      inset 0 0 0 8px #2f6bff !important;
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+  .license-watermark {
+    color: #2f6bff !important;
+    opacity: 0.14 !important;
+  }
+  .license-rights p:not(.license-label),
+  .license-who span { color: #333 !important; }
+  .license-logo { height: 64px; }
 }
 .song-box { margin-top: 16px; padding-top: 12px; border-top: 1px solid #ffffff14; }
 .song-box input { margin-bottom: 8px; }
@@ -1208,6 +1430,11 @@ form.count-sheet label {
     flex-direction: column;
     align-items: flex-start;
   }
+  .doc-head { grid-template-columns: 1fr; }
+  .doc-meta, .doc-kind { justify-items: start; text-align: left; }
+  .doc-sheet, .license-sheet { padding: 20px 16px 24px; }
+  .license-top { flex-direction: column; }
+  .license-logo { height: 64px; }
   .order-row,
   .order-row-head {
     grid-template-columns: 1fr 1fr;

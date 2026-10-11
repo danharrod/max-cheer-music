@@ -56,6 +56,7 @@ function adminPayload(store) {
       paypalMe: store.settings?.paypalMe || "",
       venmo: store.settings?.venmo || "",
       email: store.settings?.email || "maxcheermusic@gmail.com",
+      w9: store.settings?.w9?.name ? { name: store.settings.w9.name } : null,
     },
     products: store.products,
     orders: (store.orders || []).map(adminOrder).reverse(),
@@ -147,6 +148,7 @@ module.exports = async (req, res) => {
         paypalMe: String(body.store.settings?.paypalMe || "").replace(/^@/, "").trim().slice(0, 80),
         venmo: String(body.store.settings?.venmo || "").replace(/^@/, "").trim().slice(0, 80),
         email: String(body.store.settings?.email || current.settings?.email || "maxcheermusic@gmail.com").trim(),
+        w9: current.settings?.w9 || null,
       };
       const allowedIds = new Set((current.products || []).map((p) => p.id));
       current.products = body.store.products
@@ -171,6 +173,27 @@ module.exports = async (req, res) => {
       if (!ok) return res.status(500).json({ error: "Could not save prices. Storage is not connected." });
       const saved = await getStore();
       return res.status(200).json(adminPayload(saved));
+    }
+
+    if (action === "w9") {
+      const filename = String(body.filename || "").trim();
+      if (!filename || !body.data) return res.status(400).json({ error: "Missing file" });
+      if (!/\.pdf$/i.test(filename)) return res.status(400).json({ error: "Upload the W-9 as a PDF." });
+      const buffer = Buffer.from(body.data, "base64");
+      if (buffer.length > 8 * 1024 * 1024) return res.status(400).json({ error: "W-9 is too large." });
+      const saved = await saveUpload(filename, buffer, "docs");
+      const store = await getStore();
+      store.settings = store.settings || {};
+      store.settings.w9 = {
+        name: filename,
+        url: saved.url,
+        file: saved.file || "",
+        kind: "docs",
+        uploadedAt: new Date().toISOString(),
+      };
+      const ok = await saveStore(store);
+      if (!ok) return res.status(500).json({ error: "Could not save the W-9." });
+      return res.status(200).json(adminPayload(store));
     }
 
     if (action === "upload") {

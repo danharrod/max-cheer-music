@@ -477,6 +477,7 @@ function renderOrders() {
 
 function renderSettings() {
   const s = state.settings || {};
+  const w9Href = s.w9?.name ? `/api/download?admin=${encodeURIComponent(token())}&w9=1` : "";
   document.querySelector('[data-panel="settings"]').innerHTML = `
     <article class="product admin-card">
       <label>PayPal.me username</label>
@@ -484,6 +485,10 @@ function renderSettings() {
       <label>Venmo username</label>
       <input id="set-venmo" value="${esc(s.venmo || "")}" />
       <p><button class="btn" type="button" id="save-settings">Save settings</button></p>
+      <label>W-9 for customers</label>
+      <p class="hint">Upload a PDF. Customers can download it from the portal for taxes. A new file replaces the current W-9.</p>
+      ${w9Href ? `<p><a class="btn btn-outline" href="${w9Href}">${esc(s.w9.name)}</a></p>` : `<p class="hint">No W-9 uploaded yet.</p>`}
+      <input id="set-w9" type="file" accept="application/pdf,.pdf" />
     </article>`;
 }
 
@@ -596,6 +601,23 @@ document.addEventListener("DOMContentLoaded", async () => {
   });
 
   document.body.addEventListener("change", async (e) => {
+    if (e.target.id === "set-w9" && e.target.files[0]) {
+      const file = e.target.files[0];
+      if (!/\.pdf$/i.test(file.name)) {
+        setStatus("Upload the W-9 as a PDF.");
+        e.target.value = "";
+        return;
+      }
+      try {
+        setStatus("Uploading W-9…");
+        const data = await fileToBase64(file);
+        applyState(await api({ action: "w9", filename: file.name, data }));
+        setStatus("W-9 saved. Customers can download it in the portal.");
+      } catch (err) {
+        setStatus(err.message || "Could not upload the W-9.");
+      }
+      return;
+    }
     if (e.target.id === "order-sort") {
       orderUi.sort = e.target.value;
       renderOrders();

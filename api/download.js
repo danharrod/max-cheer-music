@@ -14,6 +14,12 @@ module.exports = async (req, res) => {
   const user = validCustomer(store, email, token);
   if (!isAdmin && !user) return res.status(401).end("Unauthorized");
 
+  if (url.searchParams.get("w9") === "1") {
+    const w9 = store.settings?.w9;
+    if (!w9?.name) return res.status(404).end("W-9 not found");
+    return sendFile(res, w9, "docs", "inline");
+  }
+
   const order = (store.orders || []).find((o) => o.id === orderId);
   if (!order) return res.status(404).end("Not found");
   if (!isAdmin && order.email !== user.email) return res.status(403).end("Forbidden");
@@ -23,16 +29,21 @@ module.exports = async (req, res) => {
     (order.files || []).find((f) => f.id === fileId);
   if (!file) return res.status(404).end("File not found");
 
-  if (file.url && file.url.startsWith("http")) {
+  const kind = file.kind || (order.countSheet && order.countSheet.id === fileId ? "sheets" : "mixes");
+  return sendFile(res, file, kind);
+};
+
+function sendFile(res, file, kind, disposition) {
+  if (file.url && String(file.url).startsWith("http")) {
     res.statusCode = 302;
     res.setHeader("Location", file.url);
     return res.end();
   }
-
-  const kind = file.kind || (order.countSheet && order.countSheet.id === fileId ? "sheets" : "mixes");
   const data = readLocalFile(kind, file.file);
   if (!data) return res.status(404).end("File missing");
-  res.setHeader("Content-Type", "application/octet-stream");
-  res.setHeader("Content-Disposition", `attachment; filename="${file.name.replace(/"/g, "")}"`);
+  const name = String(file.name || "download").replace(/"/g, "");
+  const pdf = /\.pdf$/i.test(name);
+  res.setHeader("Content-Type", pdf ? "application/pdf" : "application/octet-stream");
+  res.setHeader("Content-Disposition", `${disposition === "inline" ? "inline" : "attachment"}; filename="${name}"`);
   res.end(data);
-};
+}

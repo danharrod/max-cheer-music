@@ -1,5 +1,19 @@
 const KEY = "max-portal";
+const BILLING = {
+  legalName: "A&H Athletics LLC",
+  dba: "MAX Cheer",
+  line1: "7495 Wall Triana Hwy",
+  city: "Madison",
+  state: "AL",
+  zip: "35757",
+  payableTo: "MAX Cheer",
+  email: "maxcheermusic@gmail.com",
+  paypalMe: "danharrod12",
+  venmo: "daniel-harrod-3",
+  w9: null,
+};
 let portalState = null;
+let docView = null;
 
 function session() {
   try {
@@ -75,6 +89,67 @@ function isPaid(order) {
   return order.paymentStatus === "paid";
 }
 
+function money(value) {
+  return Number(value || 0).toLocaleString("en-US", { style: "currency", currency: "USD" });
+}
+
+function formatStamp(iso) {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "—";
+  return date.toLocaleString("en-US", {
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
+function dayFromIso(iso) {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "";
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
+function formatDay(day) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(day || ""));
+  if (!match) return "—";
+  const date = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+  return date.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
+}
+
+function invoiceDay(order) {
+  return /^\d{4}-\d{2}-\d{2}$/.test(String(order.invoiceDate || "")) ? order.invoiceDate : dayFromIso(order.createdAt);
+}
+
+function billingOf(data) {
+  return { ...BILLING, ...(data?.billing || {}) };
+}
+
+function w9Href(data) {
+  if (!data?.billing?.w9?.name) return "";
+  if (isPreview()) return "#preview-w9";
+  const auth = data.auth || {};
+  const q = new URLSearchParams({ email: auth.email || "", token: auth.token || "", w9: "1" });
+  return `/api/download?${q}`;
+}
+
+function lineRows(order) {
+  const items = Array.isArray(order.items) && order.items.length ? order.items : [{ title: "Cheer music mix", qty: 1, price: order.total }];
+  return items
+    .map((item) => {
+      const qty = Number(item.qty) || 1;
+      const price = Number(item.price);
+      const rate = Number.isFinite(price) ? price : (Number(order.total) || 0) / qty;
+      const amount = rate * qty;
+      return `<tr><td>${esc(item.title || item.name || "Cheer music mix")}</td><td>${qty}</td><td>${money(rate)}</td><td>${money(amount)}</td></tr>`;
+    })
+    .join("");
+}
+
 function orderFingerprint(orders) {
   return (orders || [])
     .map((o) => `${o.id}:${o.status}:${o.paymentStatus || "unpaid"}:${(o.files || []).length}:${o.countSheet?.id || ""}`)
@@ -90,6 +165,7 @@ function previewData() {
       coachLast: "Lee",
       gym: "MAX Athletics",
     },
+    billing: { ...BILLING, w9: { name: "W-9.pdf" } },
     orders: [
       {
         id: "ord-preview-1",
@@ -187,6 +263,155 @@ function songFields(order) {
     .join("")}</div>`;
 }
 
+function accountBar(data) {
+  const u = data.user || {};
+  const who = [u.coachFirst, u.coachLast].filter(Boolean).join(" ");
+  const w9 = w9Href(data);
+  return `
+    ${isPreview() ? `<p class="hint doc-screen-only">Preview with sample data — not a real account.</p>` : ""}
+    <p class="portal-toolbar doc-screen-only">
+      <span>${esc(who)}${who && u.email ? " · " : ""}${esc(u.email || "")}</span>
+      <span class="portal-toolbar-actions">
+        ${w9 ? `<a class="btn btn-outline" href="${esc(w9)}">Download W-9</a>` : ""}
+        <button class="btn btn-outline" type="button" id="portal-out">Log out</button>
+      </span>
+    </p>`;
+}
+
+function seasonLabel(iso) {
+  const date = new Date(iso || Date.now());
+  const year = Number.isNaN(date.getTime()) ? new Date().getFullYear() : date.getFullYear();
+  const start = !Number.isNaN(date.getTime()) && date.getMonth() < 5 ? year - 1 : year;
+  return `${start}-${start + 1}`;
+}
+
+function mixName(order) {
+  const items = Array.isArray(order.items) ? order.items : [];
+  if (!items.length) return "Cheer music mix";
+  return items
+    .map((item) => {
+      const title = item.title || item.name || "Mix";
+      const qty = Number(item.qty) || 1;
+      return qty > 1 ? `${title} ×${qty}` : title;
+    })
+    .join(", ");
+}
+
+function licenseHtml(order, data) {
+  const coach = [order.coachFirst, order.coachLast].filter((part) => String(part || "").trim()).join(" ") || "—";
+  const rows = [
+    ["Organization", order.gym || "—"],
+    ["Coach name", coach],
+    ["Team name", order.teamName || "—"],
+    ["Mix", mixName(order)],
+  ];
+  return `
+    ${accountBar(data)}
+    <p class="doc-toolbar doc-screen-only">
+      <button class="btn btn-outline" type="button" data-doc-back>Back to orders</button>
+      <button class="btn" type="button" id="doc-print">Print</button>
+    </p>
+    <article class="license-sheet" id="doc-sheet">
+      <p class="license-watermark" aria-hidden="true">MAX</p>
+      <div class="license-body">
+      <header class="license-top">
+        <div>
+          <p class="license-season">${esc(seasonLabel(order.createdAt))}</p>
+          <p class="license-season">Music Performance License</p>
+        </div>
+        <img class="license-logo" src="assets/max-logo.png" alt="MAX Cheer Music" />
+      </header>
+      <p class="license-title">Proof of License</p>
+      <section class="license-rights">
+        <p class="license-label">Licensing Rights</p>
+        <p>The Licensor grants rights to the Licensee for the use of this track. The track is licensed for performance and synchronization purposes only. This license becomes void if any person or company alters the track in any way. The Licensee may not sell, distribute, or reproduce the track in any form.</p>
+        <p>This document serves as proof of license for the Licensee listed below. The license is valid for 364 days from the date of receipt of the track.</p>
+        <p>Music is intended for practice, performance, and enjoyment purposes only and may not be used in any other manner. MAX Cheer Music certifies that all content in this track is either 100% original or properly licensed.</p>
+      </section>
+      <section class="license-who">
+        ${rows
+          .map(
+            ([label, value]) =>
+              `<p><span>${esc(label)}</span>${esc(value)}</p>`
+          )
+          .join("")}
+      </section>
+      </div>
+    </article>`;
+}
+
+function documentHtml(order, kind, data) {
+  if (kind === "license") return licenseHtml(order, data);
+  const billing = billingOf(data);
+  const quote = kind === "quote";
+  const coach = [order.coachFirst, order.coachLast].filter((part) => String(part || "").trim()).join(" ");
+  const total = Number(order.total) || 0;
+  const paid = isPaid(order) ? total : 0;
+  const due = Math.max(0, total - paid);
+  const day = invoiceDay(order);
+  const address = `${billing.line1}, ${billing.city}, ${billing.state} ${billing.zip}`;
+  const paypal = billing.paypalMe ? `https://paypal.me/${billing.paypalMe}` : "";
+  const venmo = billing.venmo ? `https://venmo.com/${billing.venmo}` : "";
+  const w9 = w9Href(data);
+  return `
+    ${accountBar(data)}
+    <p class="doc-toolbar doc-screen-only">
+      <button class="btn btn-outline" type="button" data-doc-back>Back to orders</button>
+      <button class="btn" type="button" id="doc-print">Print</button>
+      ${w9 ? `<a class="btn btn-outline" href="${esc(w9)}">Download W-9</a>` : ""}
+    </p>
+    <article class="doc-sheet" id="doc-sheet">
+      <header class="doc-head">
+        <div>
+          <p class="doc-brand">MAX CHEER</p>
+          <p>${esc(billing.legalName)}</p>
+          <p>DBA ${esc(billing.dba)}</p>
+          <p>${esc(billing.line1)}</p>
+          <p>${esc(billing.city)}, ${esc(billing.state)} ${esc(billing.zip)}</p>
+          <p><a href="mailto:${esc(billing.email)}">${esc(billing.email)}</a></p>
+        </div>
+        <div class="doc-meta">
+          <p class="doc-kind">${quote ? "Quote" : "Invoice"}</p>
+          <p><span>Number</span> ${esc(order.id)}</p>
+          <p><span>Order submitted</span> ${esc(formatStamp(order.createdAt))}</p>
+          ${
+            quote
+              ? `<p><span>Quote date</span> ${esc(formatStamp(order.createdAt))}</p>`
+              : `<p class="doc-date-edit"><span>Invoice date</span> <input id="invoice-date" data-invoice-date="${esc(order.id)}" type="date" value="${esc(day)}" /></p>
+                 <p class="doc-date-print"><span>Invoice date</span> <strong data-doc-date>${esc(formatDay(day))}</strong></p>
+                 <p class="hint doc-screen-only" data-invoice-status="${esc(order.id)}">Starts as the order date. Change it if you need a different invoice date.</p>`
+          }
+        </div>
+      </header>
+      <section class="doc-bill">
+        <p class="doc-label">Bill to</p>
+        <p>${esc(order.gym || "—")}</p>
+        <p>${esc(coach || "—")}</p>
+        <p>${esc(order.email || "")}</p>
+        <p>${esc(order.teamName || "")}</p>
+        ${order.poNumber ? `<p>PO number ${esc(order.poNumber)}</p>` : ""}
+      </section>
+      <table class="doc-lines">
+        <thead><tr><th>Description</th><th>Qty</th><th>Rate</th><th>Amount</th></tr></thead>
+        <tbody>${lineRows(order)}</tbody>
+      </table>
+      <div class="doc-totals">
+        <p><span>${quote ? "Quoted total" : "Total"}</span><strong>${money(total)}</strong></p>
+        ${quote ? "" : `<p><span>Paid</span><strong>${money(paid)}</strong></p><p><span>Balance due</span><strong>${money(due)}</strong></p>`}
+      </div>
+      <section class="doc-pay">
+        <p class="doc-label">How to pay</p>
+        <p>Check payable to ${esc(billing.payableTo)}</p>
+        <p>Mail checks to ${esc(address)}</p>
+        ${paypal ? `<p>PayPal: <a href="${esc(paypal)}">${esc(paypal)}</a></p>` : ""}
+        ${venmo ? `<p>Venmo: <a href="${esc(venmo)}">@${esc(billing.venmo)}</a></p>` : ""}
+        <p>Payment method on this order: ${esc(payMethodLabel(order.method))}${isPaid(order) ? " · Paid" : " · Not paid"}</p>
+        ${order.completionDate ? `<p>Requested completion: ${/^\d{4}-\d{2}-\d{2}$/.test(order.completionDate) ? esc(formatDay(order.completionDate)) : esc(order.completionDate)}</p>` : ""}
+        ${w9 ? `<p>W-9 for taxes: download it from your customer portal.</p>` : ""}
+      </section>
+    </article>`;
+}
+
 function render(data) {
   portalState = data;
   document.body.classList.add("portal-in");
@@ -194,14 +419,14 @@ function render(data) {
   const login = document.getElementById("portal-login");
   login.hidden = true;
   app.hidden = false;
-  const u = data.user;
-  const who = [u.coachFirst, u.coachLast].filter(Boolean).join(" ");
+  const open = docView ? (data.orders || []).find((order) => order.id === docView.orderId) : null;
+  if (!open || (docView.kind === "license" && !isPaid(open))) docView = null;
+  if (open && docView) {
+    app.innerHTML = documentHtml(open, docView.kind, data);
+    return;
+  }
   app.innerHTML = `
-    ${isPreview() ? `<p class="hint">Preview with sample data — not a real account.</p>` : ""}
-    <p class="portal-toolbar">
-      <span>${esc(who)}${who && u.email ? " · " : ""}${esc(u.email || "")}</span>
-      <button class="btn btn-outline" type="button" id="portal-out">Log out</button>
-    </p>
+    ${accountBar(data)}
     ${(data.orders || [])
       .map(
         (o) => `
@@ -213,6 +438,11 @@ function render(data) {
             <p class="order-pay ${isPaid(o) ? "is-paid" : "is-unpaid"}">${isPaid(o) ? "Paid" : "Not paid"}</p>
           </div>
         </div>
+        <p class="portal-doc-links">
+          <button type="button" data-doc="quote" data-order="${esc(o.id)}">Quote</button>
+          <button type="button" data-doc="invoice" data-order="${esc(o.id)}">Invoice</button>
+          ${isPaid(o) ? `<button type="button" data-doc="license" data-order="${esc(o.id)}">Proof of license</button>` : ""}
+        </p>
         ${checkoutFacts(o)}
         <div class="song-box portal-mix${(o.files || []).length ? " is-ready" : ""}">
           <p class="field-label">Finished mix</p>
@@ -282,8 +512,27 @@ document.addEventListener("DOMContentLoaded", async () => {
   document.body.addEventListener("click", async (e) => {
     if (e.target.id === "portal-out") {
       localStorage.removeItem(KEY);
+      docView = null;
       if (isPreview()) location.href = "portal.html";
       else location.reload();
+      return;
+    }
+    if (e.target.id === "doc-print") {
+      window.print();
+      return;
+    }
+    if (e.target.closest("[data-doc-back]")) {
+      docView = null;
+      render(portalState);
+      return;
+    }
+    const doc = e.target.closest("[data-doc]");
+    if (doc) {
+      const kind = doc.dataset.doc === "invoice" ? "invoice" : doc.dataset.doc === "license" ? "license" : "quote";
+      const order = (portalState?.orders || []).find((item) => item.id === doc.dataset.order);
+      if (kind === "license" && !isPaid(order || {})) return;
+      docView = { orderId: doc.dataset.order, kind };
+      render(portalState);
       return;
     }
     const save = e.target.closest("[data-save-songs]");
@@ -308,6 +557,31 @@ document.addEventListener("DOMContentLoaded", async () => {
   });
 
   document.body.addEventListener("change", async (e) => {
+    const invoiceDate = e.target.closest("[data-invoice-date]");
+    if (invoiceDate) {
+      const orderId = invoiceDate.dataset.invoiceDate;
+      const day = invoiceDate.value;
+      const order = (portalState?.orders || []).find((item) => item.id === orderId);
+      const nextDay = /^\d{4}-\d{2}-\d{2}$/.test(day) ? day : dayFromIso(order?.createdAt);
+      if (order) order.invoiceDate = nextDay === dayFromIso(order.createdAt) ? "" : nextDay;
+      const printed = document.querySelector("[data-doc-date]");
+      if (printed) printed.textContent = formatDay(nextDay);
+      if (!invoiceDate.value) invoiceDate.value = nextDay;
+      const note = document.querySelector(`[data-invoice-status="${orderId}"]`);
+      if (isPreview()) {
+        if (note) note.textContent = "Invoice date updated in preview.";
+        return;
+      }
+      try {
+        if (note) note.textContent = "Saving…";
+        const data = await api({ action: "invoice-date", orderId, invoiceDate: order?.invoiceDate || "" });
+        portalState = data;
+        if (note) note.textContent = "Invoice date saved.";
+      } catch (err) {
+        if (note) note.textContent = err.message;
+      }
+      return;
+    }
     const input = e.target.closest("[data-sheet]");
     if (!input || !input.files[0]) return;
     const file = input.files[0];
@@ -433,6 +707,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   async function refreshPortal() {
     if (isPreview() || !portalState?.auth) return;
+    if (docView) return;
     if (document.activeElement?.matches?.("[data-song], [data-sheet], textarea, input")) return;
     try {
       const data = await api({ action: "me" });
