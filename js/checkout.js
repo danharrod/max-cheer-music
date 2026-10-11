@@ -292,10 +292,24 @@ async function placeOrder(order) {
   return data;
 }
 
+function applyCheckoutProfile(form) {
+  if (!form) return;
+  let profile = null;
+  try {
+    profile = JSON.parse(sessionStorage.getItem("max-checkout-profile") || "null");
+  } catch {}
+  if (!profile) return;
+  ["gym", "coachFirst", "coachLast", "email"].forEach((name) => {
+    const field = form.elements[name];
+    if (field && !field.value && profile[name]) field.value = profile[name];
+  });
+}
+
 document.addEventListener("DOMContentLoaded", async () => {
   const lines = document.getElementById("checkout-lines");
   const totalEl = document.getElementById("checkout-total");
   const form = document.getElementById("order-form");
+  applyCheckoutProfile(form);
   const status = document.getElementById("pay-status");
   const items = MaxCart.items();
   if (items.length) buildMixSteps(form, items);

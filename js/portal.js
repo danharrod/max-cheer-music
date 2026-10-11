@@ -14,6 +14,7 @@ const BILLING = {
 };
 let portalState = null;
 let docView = null;
+const portalUi = { screen: "dashboard", filter: "all", query: "", orderId: "", tab: "overview" };
 
 function session() {
   try {
@@ -328,7 +329,7 @@ function licenseHtml(order, mix, data) {
   return `
     ${accountBar(data)}
     <p class="doc-toolbar doc-screen-only">
-      <button class="btn btn-outline" type="button" data-doc-back>Back to orders</button>
+      <button class="btn btn-outline" type="button" data-doc-back>Back</button>
       <button class="btn" type="button" id="doc-print">Print</button>
     </p>
     <article class="license-sheet" id="doc-sheet">
@@ -375,8 +376,13 @@ function documentHtml(order, kind, data) {
   return `
     ${accountBar(data)}
     <p class="doc-toolbar doc-screen-only">
-      <button class="btn btn-outline" type="button" data-doc-back>Back to orders</button>
+      <button class="btn btn-outline" type="button" data-doc-back>Back</button>
       <button class="btn" type="button" id="doc-print">Print</button>
+      ${
+        quote
+          ? `<button class="btn btn-outline" type="button" data-doc="invoice" data-order="${esc(order.id)}">Invoice</button>`
+          : `<button class="btn btn-outline" type="button" data-doc="quote" data-order="${esc(order.id)}">Quote</button>`
+      }
       ${w9 ? `<a class="btn btn-outline" href="${esc(w9)}">Download W-9</a>` : ""}
     </p>
     <article class="doc-sheet" id="doc-sheet">
@@ -431,51 +437,307 @@ function documentHtml(order, kind, data) {
     </article>`;
 }
 
-function mixCard(order, mix, index, total, data) {
-  const key = mixKey(order.id, mix.id);
+function customerLabel(data) {
+  const user = data.user || {};
+  return [user.coachFirst, user.coachLast].filter((part) => String(part || "").trim()).join(" ");
+}
+
+function sortedOrders(data) {
+  return [...(data.orders || [])].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+}
+
+function matchesQuery(order) {
+  const query = portalUi.query.trim().toLowerCase();
+  if (!query) return true;
+  return [order.id, teamTitle(order), order.gym, packageName(order)].join(" ").toLowerCase().includes(query);
+}
+
+function packageName(order) {
+  const items = order.items || [];
+  if (!items.length) return "Cheer music mix";
+  return items.map((item) => `${item.title || item.name || "Mix"}${Number(item.qty) > 1 ? ` ×${Number(item.qty)}` : ""}`).join(", ");
+}
+
+function listedOrders(data) {
+  return sortedOrders(data).filter((order) => {
+    if (portalUi.filter === "active") return order.status !== "ready";
+    if (portalUi.filter === "completed") return order.status === "ready";
+    return true;
+  }).filter(matchesQuery);
+}
+
+function navKey() {
+  if (portalUi.screen === "order" || portalUi.screen === "orders") return "orders";
+  if (portalUi.screen === "quotes") return "quotes";
+  if (portalUi.screen === "account") return "account";
+  return "dashboard";
+}
+
+function boardTop() {
+  const links = [
+    ["dashboard", "Dashboard"],
+    ["orders", "My Orders"],
+    ["quotes", "Invoices"],
+    ["account", "Account"],
+  ];
+  const current = navKey();
   return `
-    <section class="portal-mix-card" data-mix-card="${esc(key)}">
-      <h3>${esc(mix.title || "Mix")}${total > 1 ? ` <span class="hint">Mix ${index + 1} of ${total}</span>` : ""}</h3>
-      <div class="song-box">
-        <p class="field-label">Team and routine</p>
-        <div class="mix-fields">
-          <label>Team name<input data-mix-field="teamName" value="${esc(mix.teamName || "")}" /></label>
-          <label>Team colors<input data-mix-field="teamColors" value="${esc(mix.teamColors || "")}" /></label>
-          <label>Requested date<input data-mix-field="completionDate" type="date" value="${esc(mix.completionDate || "")}" /></label>
-          <label>Voiceover ideas<textarea data-mix-field="voiceover">${esc(mix.voiceover || "")}</textarea></label>
-        </div>
-        <p><button class="btn" type="button" data-save-mix="${esc(order.id)}" data-mix="${esc(mix.id)}">Save mix details</button></p>
-        <p class="hint" data-mix-status="${esc(key)}"></p>
+    <header class="portal-board-top">
+      <p class="portal-brand">MAX Cheer Music</p>
+      <span class="portal-badge">Customer Portal</span>
+    </header>
+    <nav class="portal-links">
+      ${links
+        .map(
+          ([id, label]) =>
+            `<button type="button" class="${current === id ? "is-on" : ""}" data-portal-nav="${id}">${label}</button>`
+        )
+        .join("")}
+    </nav>`;
+}
+
+function board(body) {
+  return `<section class="portal-board">${boardTop()}${body}</section>`;
+}
+
+function orderRow(order) {
+  return `
+    <div class="portal-table-row">
+      <div class="portal-team">
+        <strong>${esc(teamTitle(order))}</strong>
+        <small>${esc(order.id)}</small>
       </div>
-      <div class="song-box">
-        <p class="field-label">Your 5 songs</p>
-        <p class="hint">Type names from <a href="https://songsforcheer.com" target="_blank" rel="noreferrer">songsforcheer.com</a>.</p>
-        ${songFields(order, mix)}
-        <p><button class="btn" type="button" data-save-songs="${esc(order.id)}" data-mix="${esc(mix.id)}">Save songs</button></p>
-        <p class="hint" data-song-status="${esc(key)}"></p>
+      <div><span class="portal-pill ${statusClass(order.status)}">${esc(statusLabel(order.status))}</span></div>
+      <div><button type="button" data-open-order="${esc(order.id)}">View →</button></div>
+    </div>`;
+}
+
+function listBody(data) {
+  const orders = data.orders || [];
+  const inProgress = orders.filter((order) => order.status !== "ready").length;
+  const completed = orders.filter((order) => order.status === "ready").length;
+  const rows = listedOrders(data);
+  const title = portalUi.screen === "orders" ? "My Orders" : "My Music Orders";
+  return `
+    <div class="portal-title-row">
+      <div>
+        <h2>${title}</h2>
+        <p>Manage your teams and music projects</p>
       </div>
-      <div class="song-box">
-        <p class="field-label">Count sheet PDF</p>
-        <p class="hint">Fill and upload from <a href="sheets.html">8 Count Sheets</a>.</p>
-        ${
-          mix.countSheet
-            ? `<p><a class="btn btn-outline" href="${downloadUrl(order, mix.countSheet, data.auth)}">Download ${esc(mix.countSheet.name)}</a></p>`
-            : `<p class="hint">No count sheet yet.</p>`
-        }
-        <input data-sheet="${esc(order.id)}" data-mix="${esc(mix.id)}" type="file" accept="application/pdf,.pdf" />
-        <p class="hint" data-sheet-status="${esc(key)}"></p>
+      <button class="btn portal-new" type="button" data-new-order>New music order</button>
+    </div>
+    <div class="portal-stats">
+      <button type="button" data-portal-filter="all" class="${portalUi.filter === "all" ? "is-on" : ""}"><strong>${orders.length}</strong><span>Total orders</span></button>
+      <button type="button" data-portal-filter="active" class="${portalUi.filter === "active" ? "is-on" : ""}"><strong>${inProgress}</strong><span>In progress</span></button>
+      <button type="button" data-portal-filter="completed" class="${portalUi.filter === "completed" ? "is-on" : ""}"><strong>${completed}</strong><span>Completed</span></button>
+    </div>
+    <label class="portal-search-label" for="portal-search">Search orders</label>
+    <input id="portal-search" class="portal-search" type="search" placeholder="Search orders..." value="${esc(portalUi.query)}" />
+    <div class="portal-table">
+      <div class="portal-table-head"><span>Team</span><span>Status</span><span>Action</span></div>
+      ${
+        rows.length
+          ? rows.map(orderRow).join("")
+          : `<p class="hint portal-empty">${orders.length ? "No orders match that search." : "No orders on this account yet."}</p>`
+      }
+    </div>`;
+}
+
+function quotesBody(data) {
+  const orders = sortedOrders(data);
+  return `
+    <div class="portal-title-row">
+      <div>
+        <h2>Invoices</h2>
+        <p>Quotes, invoices, and proof of license</p>
       </div>
-      <p class="portal-doc-links">
-        ${
-          isPaid(order)
-            ? `<button type="button" data-doc="license" data-order="${esc(order.id)}" data-mix="${esc(mix.id)}">Proof of license</button>`
-            : `<span class="hint">Proof of license for this mix is available after the order is paid.</span>`
-        }
-      </p>
+    </div>
+    ${
+      orders.length
+        ? orders
+            .map((order) => {
+              const licenses = isPaid(order)
+                ? orderMixes(order)
+                    .map(
+                      (mix) =>
+                        `<button type="button" data-doc="license" data-order="${esc(order.id)}" data-mix="${esc(mix.id)}">Proof of license${orderMixes(order).length > 1 ? ` · ${esc(mix.teamName || mix.title || "Mix")}` : ""}</button>`
+                    )
+                    .join("")
+                : `<span class="hint">Proof of license is available after the order is paid.</span>`;
+              return `
+                <article class="portal-doc-row">
+                  <div class="portal-team">
+                    <strong>${esc(teamTitle(order))}</strong>
+                    <small>${esc(order.id)} · ${isPaid(order) ? "Paid" : "Not paid"}</small>
+                  </div>
+                  <p class="portal-doc-links">
+                    <button type="button" data-doc="quote" data-order="${esc(order.id)}">Quote</button>
+                    <button type="button" data-doc="invoice" data-order="${esc(order.id)}">Invoice</button>
+                    ${licenses}
+                  </p>
+                </article>`;
+            })
+            .join("")
+        : `<p class="hint">No orders on this account yet.</p>`
+    }`;
+}
+
+function accountBody(data) {
+  const user = data.user || {};
+  const w9 = w9Href(data);
+  return `
+    <div class="portal-title-row">
+      <div>
+        <h2>Account</h2>
+        <p>${esc(user.email || "")}</p>
+      </div>
+    </div>
+    <div class="order-facts">
+      ${fact("Name", blank(customerLabel(data)))}
+      ${fact("Gym or school", blank(user.gym))}
+      ${fact("Email", blank(user.email))}
+    </div>
+    ${w9 ? `<p><a class="btn btn-outline" href="${esc(w9)}">Download W-9</a></p>` : `<p class="hint">A W-9 appears here after MAX uploads one.</p>`}
+    <p><button class="btn btn-outline" type="button" id="portal-out">Log out</button></p>`;
+}
+
+function teamPanel(order) {
+  return orderMixes(order)
+    .map((mix, index, list) => {
+      const key = mixKey(order.id, mix.id);
+      return `
+        <section class="portal-mix-card" data-mix-card="${esc(key)}">
+          <h3>${esc(mix.title || "Mix")}${list.length > 1 ? ` <span class="hint">Mix ${index + 1} of ${list.length}</span>` : ""}</h3>
+          <div class="mix-fields">
+            <label>Team name<input data-mix-field="teamName" value="${esc(mix.teamName || "")}" /></label>
+            <label>Team colors<input data-mix-field="teamColors" value="${esc(mix.teamColors || "")}" /></label>
+            <label>Requested date<input data-mix-field="completionDate" type="date" value="${esc(mix.completionDate || "")}" /></label>
+            <label>Voiceover ideas<textarea data-mix-field="voiceover">${esc(mix.voiceover || "")}</textarea></label>
+          </div>
+          <p><button class="btn" type="button" data-save-mix="${esc(order.id)}" data-mix="${esc(mix.id)}">Save mix details</button></p>
+          <p class="hint" data-mix-status="${esc(key)}"></p>
+        </section>`;
+    })
+    .join("");
+}
+
+function songsPanel(order) {
+  return orderMixes(order)
+    .map((mix, index, list) => {
+      const key = mixKey(order.id, mix.id);
+      return `
+        <section class="portal-mix-card">
+          <h3>${esc(mix.title || "Mix")}${list.length > 1 ? ` <span class="hint">Mix ${index + 1} of ${list.length}</span>` : ""}</h3>
+          <p class="hint">${esc(mix.teamName || "No team name yet")}. Type names from <a href="https://songsforcheer.com" target="_blank" rel="noreferrer">songsforcheer.com</a>.</p>
+          ${songFields(order, mix)}
+          <p><button class="btn" type="button" data-save-songs="${esc(order.id)}" data-mix="${esc(mix.id)}">Save songs</button></p>
+          <p class="hint" data-song-status="${esc(key)}"></p>
+        </section>`;
+    })
+    .join("");
+}
+
+function filesPanel(order, data) {
+  const sheets = orderMixes(order)
+    .map((mix, index) => {
+      const key = mixKey(order.id, mix.id);
+      return `
+        <section class="portal-mix-card">
+          <h3>Mix ${index + 1}${mix.teamName ? ` · ${esc(mix.teamName)}` : ""}</h3>
+          <p class="hint">Fill and upload from <a href="sheets.html">8 Count Sheets</a>.</p>
+          ${
+            mix.countSheet
+              ? `<p><a class="btn btn-outline" href="${downloadUrl(order, mix.countSheet, data.auth)}">Download ${esc(mix.countSheet.name)}</a></p>`
+              : `<p class="hint">No count sheet yet.</p>`
+          }
+          <input data-sheet="${esc(order.id)}" data-mix="${esc(mix.id)}" type="file" accept="application/pdf,.pdf" />
+          <p class="hint" data-sheet-status="${esc(key)}"></p>
+        </section>`;
+    })
+    .join("");
+  const files = (order.files || [])
+    .map((file) => `<p><a class="btn" href="${downloadUrl(order, file, data.auth)}">Download ${esc(file.name)}</a></p>`)
+    .join("");
+  return `
+    ${sheets}
+    <section class="portal-mix-card">
+      <h3>Finished mix</h3>
+      ${files || `<p class="hint">MAX will post the mix here when it is ready.</p>`}
     </section>`;
 }
 
-function render(data) {
+function payPanel(order) {
+  const licenses = orderMixes(order)
+    .map((mix, index) =>
+      isPaid(order)
+        ? `<button type="button" data-doc="license" data-order="${esc(order.id)}" data-mix="${esc(mix.id)}">Proof of license${orderMixes(order).length > 1 ? ` · Mix ${index + 1}` : ""}</button>`
+        : ""
+    )
+    .join("");
+  return `
+    ${checkoutFacts(order)}
+    <p class="order-pay ${isPaid(order) ? "is-paid" : "is-unpaid"}">${isPaid(order) ? "Paid" : "Not paid"}</p>
+    <p class="portal-doc-links">
+      <button type="button" data-doc="quote" data-order="${esc(order.id)}">Quote</button>
+      <button type="button" data-doc="invoice" data-order="${esc(order.id)}">Invoice</button>
+      ${licenses || `<span class="hint">Proof of license for this mix is available after the order is paid.</span>`}
+    </p>`;
+}
+
+function orderBody(data) {
+  const order = (data.orders || []).find((item) => item.id === portalUi.orderId);
+  if (!order) return listBody(data);
+  const tabs = [
+    ["overview", "Overview"],
+    ["team", "Team details"],
+    ["songs", "Songs"],
+    ["files", "Counts & files"],
+    ["pay", "Quotes & payments"],
+  ];
+  const tab = tabs.some(([id]) => id === portalUi.tab) ? portalUi.tab : "overview";
+  const tabLabel = tabs.find(([id]) => id === tab)[1];
+  const missing = orderMixes(order).flatMap((mix, index) => {
+    const items = [];
+    const songs = (mix.songs || []).map((song) => String(song || "").trim()).filter(Boolean);
+    if (!String(mix.teamName || "").trim()) items.push(`Mix ${index + 1} needs a team name`);
+    if (songs.length < 5) items.push(`Mix ${index + 1} needs 5 songs`);
+    if (!mix.countSheet) items.push(`Mix ${index + 1} needs a count sheet`);
+    return items;
+  });
+  let panel = checkoutFacts(order);
+  if (tab === "overview") {
+    panel += missing.length
+      ? `<p class="field-label">Still needed</p><ul class="order-gaps">${missing.map((item) => `<li>${esc(item)}</li>`).join("")}</ul>`
+      : `<p class="hint">Team details, songs, and count sheets are in for every mix.</p>`;
+  } else if (tab === "team") panel = teamPanel(order);
+  else if (tab === "songs") panel = songsPanel(order);
+  else if (tab === "files") panel = filesPanel(order, data);
+  else panel = payPanel(order);
+  return `
+    <p class="portal-crumbs">
+      <button type="button" data-portal-nav="orders">My Orders</button>
+      <span>${esc(teamTitle(order))}</span>
+      <span>${esc(tabLabel)}</span>
+    </p>
+    <div class="portal-title-row">
+      <div>
+        <h2>${esc(teamTitle(order))}</h2>
+        <p>${esc(order.id)} · ${esc(packageName(order))}</p>
+      </div>
+      <span class="portal-pill ${statusClass(order.status)}">${esc(statusLabel(order.status))}</span>
+    </div>
+    <nav class="portal-links portal-tabs">
+      ${tabs
+        .map(
+          ([id, label]) =>
+            `<button type="button" class="${tab === id ? "is-on" : ""}" data-portal-tab="${id}">${label}</button>`
+        )
+        .join("")}
+    </nav>
+    ${panel}`;
+}
+
+function render(data, opts = {}) {
   portalState = data;
   document.body.classList.add("portal-in");
   const app = document.getElementById("portal-app");
@@ -495,37 +757,17 @@ function render(data) {
     app.innerHTML = documentHtml(open, docView.kind, data);
     return;
   }
-  app.innerHTML = `
-    ${accountBar(data)}
-    ${(data.orders || [])
-      .map(
-        (o) => `
-      <article class="product portal-order">
-        <div class="portal-order-head">
-          <h2>${esc(teamTitle(o))} · $${Number(o.total || 0).toLocaleString("en-US")}</h2>
-          <div class="order-flags">
-            <p class="order-status ${statusClass(o.status)}">${esc(statusLabel(o.status))}</p>
-            <p class="order-pay ${isPaid(o) ? "is-paid" : "is-unpaid"}">${isPaid(o) ? "Paid" : "Not paid"}</p>
-          </div>
-        </div>
-        <p class="portal-doc-links">
-          <button type="button" data-doc="quote" data-order="${esc(o.id)}">Quote</button>
-          <button type="button" data-doc="invoice" data-order="${esc(o.id)}">Invoice</button>
-        </p>
-        ${checkoutFacts(o)}
-        <div class="song-box portal-mix${(o.files || []).length ? " is-ready" : ""}">
-          <p class="field-label">Finished mix</p>
-          ${(o.files || []).length
-            ? (o.files || [])
-                .map((f) => `<p><a class="btn" href="${downloadUrl(o, f, data.auth)}">Download ${esc(f.name)}</a></p>`)
-                .join("")
-            : `<p class="hint">MAX will post the mix here when it is ready.</p>`}
-        </div>
-        ${orderMixes(o).map((mix, index, list) => mixCard(o, mix, index, list.length, data)).join("")}
-      </article>`
-      )
-      .join("") || `<p class="hint">No orders on this account yet.</p>`}
-  `;
+  const screen = portalUi.screen;
+  const body = screen === "quotes" ? quotesBody(data) : screen === "account" ? accountBody(data) : screen === "order" ? orderBody(data) : listBody(data);
+  app.innerHTML = board(body);
+  if (opts.focusSearch) {
+    const search = document.getElementById("portal-search");
+    if (search) {
+      search.focus();
+      const end = search.value.length;
+      search.setSelectionRange(end, end);
+    }
+  }
 }
 
 async function api(body) {
@@ -585,6 +827,49 @@ document.addEventListener("DOMContentLoaded", async () => {
       docView = null;
       if (isPreview()) location.href = "portal.html";
       else location.reload();
+      return;
+    }
+    const nav = e.target.closest("[data-portal-nav]");
+    if (nav) {
+      portalUi.screen = nav.dataset.portalNav || "dashboard";
+      if (portalUi.screen !== "order") portalUi.orderId = "";
+      render(portalState);
+      return;
+    }
+    const filter = e.target.closest("[data-portal-filter]");
+    if (filter) {
+      portalUi.filter = filter.dataset.portalFilter || "all";
+      if (portalUi.screen === "order") portalUi.screen = "dashboard";
+      render(portalState);
+      return;
+    }
+    const tab = e.target.closest("[data-portal-tab]");
+    if (tab) {
+      portalUi.tab = tab.dataset.portalTab || "overview";
+      render(portalState);
+      return;
+    }
+    const openOrder = e.target.closest("[data-open-order]");
+    if (openOrder) {
+      portalUi.orderId = openOrder.dataset.openOrder;
+      portalUi.screen = "order";
+      portalUi.tab = "overview";
+      render(portalState);
+      return;
+    }
+    if (e.target.closest("[data-new-order]")) {
+      const user = portalState?.user || {};
+      const sample = (portalState?.orders || [])[0] || {};
+      sessionStorage.setItem(
+        "max-checkout-profile",
+        JSON.stringify({
+          email: user.email || sample.email || "",
+          coachFirst: user.coachFirst || sample.coachFirst || "",
+          coachLast: user.coachLast || sample.coachLast || "",
+          gym: user.gym || sample.gym || "",
+        })
+      );
+      location.href = "shop.html";
       return;
     }
     if (e.target.id === "doc-print") {
@@ -650,6 +935,12 @@ document.addEventListener("DOMContentLoaded", async () => {
     } catch (err) {
       if (status) status.textContent = err.message;
     }
+  });
+
+  document.body.addEventListener("input", (e) => {
+    if (e.target.id !== "portal-search" || !portalState) return;
+    portalUi.query = e.target.value;
+    render(portalState, { focusSearch: true });
   });
 
   document.body.addEventListener("change", async (e) => {
