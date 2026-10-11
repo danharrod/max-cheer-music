@@ -155,9 +155,24 @@ function formatWhen(value, dateOnly) {
   return date.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 }
 
-function dueFlag(order) {
-  if (order.status === "ready" || !order.completionDate) return "";
-  const due = new Date(`${order.completionDate}T00:00:00`);
+function orderMixes(order) {
+  if (Array.isArray(order.mixes) && order.mixes.length) return order.mixes;
+  return [{
+    id: "mix-1",
+    title: packageName(order) || "Mix",
+    teamName: order.teamName || "",
+    teamColors: order.teamColors || "",
+    voiceover: order.voiceover || "",
+    completionDate: order.completionDate || "",
+    songs: order.songs || [],
+    countSheet: order.countSheet || null,
+  }];
+}
+
+function dateFlag(dateValue) {
+  const text = String(dateValue || "").trim();
+  if (!text) return "";
+  const due = new Date(`${text.slice(0, 10)}T00:00:00`);
   if (Number.isNaN(due.getTime())) return "";
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -165,6 +180,14 @@ function dueFlag(order) {
   soon.setDate(soon.getDate() + 7);
   if (due < today) return "overdue";
   if (due <= soon) return "soon";
+  return "";
+}
+
+function dueFlag(order) {
+  if (order.status === "ready") return "";
+  const flags = orderMixes(order).map((mix) => dateFlag(mix.completionDate));
+  if (flags.includes("overdue")) return "overdue";
+  if (flags.includes("soon")) return "soon";
   return "";
 }
 
@@ -219,7 +242,8 @@ function sortOrders(list) {
     if (orderUi.sort === "gym") return String(a.gym || "").localeCompare(String(b.gym || ""), undefined, { sensitivity: "base" });
     if (orderUi.sort === "status") return (rank[a.status] ?? 9) - (rank[b.status] ?? 9) || String(a.gym || "").localeCompare(String(b.gym || ""));
     if (orderUi.sort === "created") return String(b.createdAt || "").localeCompare(String(a.createdAt || ""));
-    return String(a.completionDate || "9999-99-99").localeCompare(String(b.completionDate || "9999-99-99"));
+    const dueOf = (order) => orderMixes(order).map((mix) => mix.completionDate).filter(Boolean).sort()[0] || "9999-99-99";
+    return dueOf(a).localeCompare(dueOf(b));
   });
 }
 
@@ -314,17 +338,24 @@ function statusSelect(order) {
   </select>`;
 }
 
+function mixLine(mix, index, order) {
+  const flag = order.status === "ready" ? "" : dateFlag(mix.completionDate);
+  const dueText = flag === "overdue" ? "Overdue" : flag === "soon" ? "Due within 7 days" : "";
+  const when = formatWhen(mix.completionDate, true);
+  return `<span class="order-mix-line">
+    <strong>${index + 1}. ${esc(mix.title || "Mix")} · ${blank(mix.teamName)}</strong>
+    <span>${esc(mix.teamColors || "No colors")} · ${when ? esc(when) : "No date"}${dueText ? `<span class="order-due">${dueText}</span>` : ""}</span>
+  </span>`;
+}
+
 function orderRow(order) {
   const due = dueFlag(order);
-  const dueText = due === "overdue" ? "Overdue" : due === "soon" ? "Due within 7 days" : "";
-  const when = formatWhen(order.completionDate, true);
+  const mixes = orderMixes(order);
   return `
     <button class="order-row${due ? ` is-${due}` : ""}" type="button" data-open-order="${esc(order.id)}">
       <span class="order-cell" data-label="Order"><span class="order-id">${esc(order.id)}</span></span>
       <span class="order-cell" data-label="Gym"><strong>${blank(order.gym)}</strong></span>
-      <span class="order-cell" data-label="Team">${blank(teamLabel(order))}</span>
-      <span class="order-cell" data-label="Package">${blank(packageName(order))}</span>
-      <span class="order-cell" data-label="Competition date">${when ? esc(when) : "—"}${dueText ? `<span class="order-due">${dueText}</span>` : ""}</span>
+      <span class="order-cell" data-label="Mixes"><span class="order-mix-lines">${mixes.map((mix, index) => mixLine(mix, index, order)).join("")}</span></span>
       <span class="order-cell" data-label="Production"><span class="order-status ${productionClass(order.status)}">${esc(productionLabel(order.status))}</span></span>
       <span class="order-cell" data-label="Payment"><span class="order-pay ${paymentClass(order)}">${esc(paymentLabel(order))}</span></span>
     </button>`;
@@ -353,7 +384,7 @@ function orderListHtml() {
       ? `<p class="hint">No orders match that search.</p>`
       : `<div class="order-table">
           <div class="order-row-head">
-            <span>Order</span><span>Gym</span><span>Team</span><span>Package</span><span>Competition date</span><span>Production</span><span>Payment</span>
+            <span>Order</span><span>Gym</span><span>Mixes</span><span>Production</span><span>Payment</span>
           </div>
           ${rows.map(orderRow).join("")}
         </div>`;
@@ -380,40 +411,33 @@ function fileBlock(order, file, label) {
   return `<div class="order-file"><p class="order-fact-label">${esc(label)}</p><p><a href="${esc(href)}">${esc(file.name)}</a></p>${audio}</div>`;
 }
 
-function mixDetailHtml(mix) {
+function mixDetailHtml(order, mix, index, total) {
   const songs = (mix.songs || []).map((song) => String(song || "").trim()).filter(Boolean);
   const songHtml = songs.length ? `<ol class="order-songs">${songs.map((song) => `<li>${esc(song)}</li>`).join("")}</ol>` : "—";
+  const sheet = mix.countSheet
+    ? fileBlock(order, mix.countSheet, "Count sheet")
+    : `<p class="hint">No count sheet yet.</p>`;
   return `
-    <div class="order-mix-block">
-      <p class="field-label">${esc(mix.title || "Mix")}</p>
+    <section class="order-mix-block">
+      <h4>Mix ${index + 1} of ${total} · ${esc(mix.title || "Mix")}</h4>
+      <p class="order-mix-who">${blank(mix.teamName)}</p>
       <div class="order-facts">
+        ${fact("Requested completion date", blank(formatWhen(mix.completionDate, true) || mix.completionDate))}
         ${fact("Team name", blank(mix.teamName))}
         ${fact("Team colors", blank(mix.teamColors))}
-        ${fact("Requested completion date", blank(mix.completionDate))}
         ${fact("Voiceover ideas", blank(mix.voiceover), true)}
         ${fact("Song choices", songHtml, true)}
       </div>
-    </div>`;
+      ${sheet}
+    </section>`;
 }
 
 function orderDetailHtml(order) {
-  const mixes = Array.isArray(order.mixes) && order.mixes.length ? order.mixes : [{
-    title: "Mix",
-    teamName: order.teamName,
-    teamColors: order.teamColors,
-    voiceover: order.voiceover,
-    completionDate: order.completionDate,
-    songs: order.songs,
-    countSheet: order.countSheet,
-  }];
+  const mixes = orderMixes(order);
   const files = [...(order.files || [])].reverse();
   const fileHtml = files.length
     ? files.map((file) => fileBlock(order, file, "Finished mix")).join("")
     : `<p class="hint">No mix uploaded yet.</p>`;
-  const sheets = mixes.filter((mix) => mix.countSheet);
-  const sheetHtml = sheets.length
-    ? sheets.map((mix) => fileBlock(order, mix.countSheet, `${mix.teamName || mix.title || "Mix"} count sheet`)).join("")
-    : `<p class="hint">No count sheet uploaded yet.</p>`;
   const payments = (order.payments || [])
     .map((payment) => `<li>${esc(payMethodLabel(payment.method))} · $${Number(payment.amount || 0).toLocaleString("en-US")}${payment.reference ? ` · ${esc(payment.reference)}` : ""}${payment.date ? ` · ${esc(payment.date)}` : ""}</li>`)
     .join("");
@@ -425,7 +449,7 @@ function orderDetailHtml(order) {
       <div class="order-detail-head">
         <div>
           <button class="btn btn-outline" type="button" data-order-back>Back to orders</button>
-          <h2>${esc(teamLabel(order) || order.gym || "Order")}</h2>
+          <h2>${esc(order.gym || teamLabel(order) || "Order")}</h2>
           <p class="hint">${esc(order.id)}</p>
         </div>
         <p class="order-flags">
@@ -439,7 +463,6 @@ function orderDetailHtml(order) {
           ${fact("Gym or school name", blank(order.gym))}
           ${fact("Customer name", blank(customerName(order)))}
           ${fact("Email", blank(order.email))}
-          ${fact("Team name", blank(teamLabel(order)))}
         </div>
       </section>
       <section class="order-section">
@@ -450,11 +473,11 @@ function orderDetailHtml(order) {
           ${fact("PO number", blank(order.poNumber))}
           ${fact("Total", `$${Number(order.total || 0).toLocaleString("en-US")}`)}
         </div>
-        ${mixes.map((mix) => mixDetailHtml(mix)).join("")}
+        <p class="hint">Each mix is listed in the same order as checkout. The team, colors, date, and voiceover belong to that mix only.</p>
+        ${mixes.map((mix, index) => mixDetailHtml(order, mix, index, mixes.length)).join("")}
       </section>
       <section class="order-section">
         <h3>Files</h3>
-        ${sheetHtml}
         ${fileHtml}
         <label for="mix-${esc(order.id)}">Upload or replace finished mix</label>
         <p class="hint">Uploading adds the file to this order and marks production Completed. Earlier files stay attached. The newest mix shows in the customer portal.</p>
