@@ -119,7 +119,7 @@ function payMethodLabel(method) {
   return String(method || "").trim() || "—";
 }
 
-const orderUi = { tab: "active", query: "", sort: "due", openId: "" };
+const orderUi = { tab: "active", query: "", sort: "due", openId: "", section: "overview" };
 
 const PRODUCTION_OPTIONS = [
   { value: "received", label: "Ordered" },
@@ -213,10 +213,21 @@ function isAudioName(name) {
   return /\.(mp3|wav|m4a|aac|ogg|mpeg)$/i.test(name || "");
 }
 
+function mixNeedsAttention(mix) {
+  const songs = (mix.songs || []).map((song) => String(song || "").trim()).filter(Boolean);
+  return !String(mix.teamName || "").trim() || !String(mix.completionDate || "").trim() || songs.length < 5 || !mix.countSheet;
+}
+
+function needsAttention(order) {
+  if (order.status === "ready") return false;
+  return orderMixes(order).some(mixNeedsAttention);
+}
+
 function ordersInTab(tab) {
   return state.orders.filter((order) => {
     if (tab === "completed") return order.status === "ready";
     if (tab === "active") return order.status !== "ready";
+    if (tab === "attention") return needsAttention(order);
     return true;
   });
 }
@@ -364,11 +375,24 @@ function orderRow(order) {
 function orderListHtml() {
   const counts = {
     active: ordersInTab("active").length,
+    attention: ordersInTab("attention").length,
     completed: ordersInTab("completed").length,
     all: state.orders.length,
   };
+  const stats = [
+    ["active", "In progress", counts.active],
+    ["attention", "Needs attention", counts.attention],
+    ["completed", "Completed", counts.completed],
+    ["all", "All orders", counts.all],
+  ]
+    .map(
+      ([id, label, count]) =>
+        `<button type="button" class="admin-stat${orderUi.tab === id ? " is-on" : ""}" data-order-tab="${id}"><strong>${count}</strong><span>${label}</span></button>`
+    )
+    .join("");
   const tabs = [
     ["active", "Active orders"],
+    ["attention", "Needs attention"],
     ["completed", "Completed orders"],
     ["all", "All orders"],
   ]
@@ -390,6 +414,7 @@ function orderListHtml() {
         </div>`;
   return `
     <div class="order-desk">
+      <div class="admin-stats">${stats}</div>
       <div class="order-desk-tabs">${tabs}</div>
       <div class="order-desk-tools">
         <input class="order-search" id="order-search" type="search" placeholder="Search gym, team, customer, or order number" value="${esc(orderUi.query)}" />
@@ -400,7 +425,7 @@ function orderListHtml() {
           <option value="status" ${orderUi.sort === "status" ? "selected" : ""}>Production status</option>
         </select>
       </div>
-      <p class="hint">Unfinished orders due within 7 days are marked. Overdue orders are marked in red. Active orders is the list to work from.</p>
+      <p class="hint">Open an order to work one section at a time. Unfinished orders due within 7 days are marked. Overdue orders are marked in red.</p>
       ${body}
     </div>`;
 }
@@ -411,12 +436,7 @@ function fileBlock(order, file, label) {
   return `<div class="order-file"><p class="order-fact-label">${esc(label)}</p><p><a href="${esc(href)}">${esc(file.name)}</a></p>${audio}</div>`;
 }
 
-function mixDetailHtml(order, mix, index, total) {
-  const songs = (mix.songs || []).map((song) => String(song || "").trim()).filter(Boolean);
-  const songHtml = songs.length ? `<ol class="order-songs">${songs.map((song) => `<li>${esc(song)}</li>`).join("")}</ol>` : "—";
-  const sheet = mix.countSheet
-    ? fileBlock(order, mix.countSheet, "Count sheet")
-    : `<p class="hint">No count sheet yet.</p>`;
+function mixDetailHtml(mix, index, total) {
   return `
     <section class="order-mix-block">
       <h4>Mix ${index + 1} of ${total} · ${esc(mix.title || "Mix")}</h4>
@@ -426,9 +446,19 @@ function mixDetailHtml(order, mix, index, total) {
         ${fact("Team name", blank(mix.teamName))}
         ${fact("Team colors", blank(mix.teamColors))}
         ${fact("Voiceover ideas", blank(mix.voiceover), true)}
-        ${fact("Song choices", songHtml, true)}
       </div>
-      ${sheet}
+    </section>`;
+}
+
+function songBlock(mix, index, total) {
+  const songs = (mix.songs || []).map((song) => String(song || "").trim());
+  const filled = songs.filter(Boolean).length;
+  const songHtml = filled ? `<ol class="order-songs">${[0, 1, 2, 3, 4].map((i) => `<li>${esc(songs[i] || "—")}</li>`).join("")}</ol>` : `<p class="hint">No songs yet.</p>`;
+  return `
+    <section class="order-mix-block">
+      <h4>Mix ${index + 1} of ${total} · ${esc(mix.title || "Mix")}</h4>
+      <p class="hint">${esc(mix.teamName || "No team name")} · ${filled} of 5 songs</p>
+      ${songHtml}
     </section>`;
 }
 
@@ -444,47 +474,88 @@ function orderDetailHtml(order) {
   const activity = (order.activity || [])
     .map((entry) => `<li>${esc(formatWhen(entry.at) || "")} · ${esc(entry.detail || entry.action || "")}</li>`)
     .join("");
-  return `
-    <article class="order-detail">
-      <div class="order-detail-head">
-        <div>
-          <button class="btn btn-outline" type="button" data-order-back>Back to orders</button>
-          <h2>${esc(order.gym || teamLabel(order) || "Order")}</h2>
-          <p class="hint">${esc(order.id)}</p>
-        </div>
-        <p class="order-flags">
-          <span class="order-status ${productionClass(order.status)}">${esc(productionLabel(order.status))}</span>
-          <span class="order-pay ${paymentClass(order)}">${esc(paymentLabel(order))}</span>
-        </p>
-      </div>
+  const sections = [
+    ["overview", "Overview"],
+    ["mixes", "Mix details"],
+    ["songs", "Songs"],
+    ["files", "Files"],
+    ["manage", "Production & payment"],
+  ];
+  const section = sections.some(([id]) => id === orderUi.section) ? orderUi.section : "overview";
+  const tabs = sections
+    .map(
+      ([id, label]) =>
+        `<button type="button" class="btn ${section === id ? "is-on" : "btn-outline"}" data-admin-section="${id}">${label}</button>`
+    )
+    .join("");
+  const gaps = mixes.flatMap((mix, index) => {
+    const items = [];
+    if (!String(mix.teamName || "").trim()) items.push(`Mix ${index + 1} needs a team name`);
+    if ((mix.songs || []).map((song) => String(song || "").trim()).filter(Boolean).length < 5) items.push(`Mix ${index + 1} needs 5 songs`);
+    if (!mix.countSheet) items.push(`Mix ${index + 1} needs a count sheet`);
+    return items;
+  });
+  let panel = "";
+  if (section === "overview") {
+    panel = `
       <section class="order-section">
-        <h3>Customer information</h3>
+        <h3>Customer</h3>
         <div class="order-facts">
           ${fact("Gym or school name", blank(order.gym))}
           ${fact("Customer name", blank(customerName(order)))}
           ${fact("Email", blank(order.email))}
-        </div>
-      </section>
-      <section class="order-section">
-        <h3>Music order information</h3>
-        <div class="order-facts">
           ${fact("Package ordered", blank(packageName(order)), true)}
           ${fact("Payment method", esc(payMethodLabel(order.method)))}
           ${fact("PO number", blank(order.poNumber))}
           ${fact("Total", `$${Number(order.total || 0).toLocaleString("en-US")}`)}
+          ${fact("Order date", blank(formatWhen(order.createdAt)))}
         </div>
-        <p class="hint">Each mix is listed in the same order as checkout. The team, colors, date, and voiceover belong to that mix only.</p>
-        ${mixes.map((mix, index) => mixDetailHtml(order, mix, index, mixes.length)).join("")}
-      </section>
+        ${
+          gaps.length
+            ? `<p class="field-label">Still needed</p><ul class="order-gaps">${gaps.map((gap) => `<li>${esc(gap)}</li>`).join("")}</ul>`
+            : `<p class="hint">Team details, songs, and count sheets are in for every mix.</p>`
+        }
+        <div class="order-mix-lines">${mixes
+          .map(
+            (mix, index) =>
+              `<button type="button" class="order-mix-jump" data-admin-section="mixes">${index + 1}. ${esc(mix.title || "Mix")} · ${esc(mix.teamName || "No team")} · ${esc(formatWhen(mix.completionDate, true) || "No date")}</button>`
+          )
+          .join("")}</div>
+      </section>`;
+  } else if (section === "mixes") {
+    panel = `
+      <section class="order-section">
+        <h3>Mix details</h3>
+        <p class="hint">Same order as checkout. Each mix keeps its own team, date, colors, and voiceover.</p>
+        ${mixes.map((mix, index) => mixDetailHtml(mix, index, mixes.length)).join("")}
+      </section>`;
+  } else if (section === "songs") {
+    panel = `
+      <section class="order-section">
+        <h3>Songs</h3>
+        ${mixes.map((mix, index) => songBlock(mix, index, mixes.length)).join("")}
+      </section>`;
+  } else if (section === "files") {
+    const sheets = mixes
+      .map((mix, index) =>
+        mix.countSheet
+          ? fileBlock(order, mix.countSheet, `Mix ${index + 1} · ${mix.teamName || mix.title || "Mix"} count sheet`)
+          : `<p class="hint">Mix ${index + 1} · ${esc(mix.teamName || mix.title || "Mix")} has no count sheet yet.</p>`
+      )
+      .join("");
+    panel = `
       <section class="order-section">
         <h3>Files</h3>
+        ${sheets}
         ${fileHtml}
         <label for="mix-${esc(order.id)}">Upload or replace finished mix</label>
         <p class="hint">Uploading adds the file to this order and marks production Completed. Earlier files stay attached. The newest mix shows in the customer portal.</p>
         <input id="mix-${esc(order.id)}" data-attach="${esc(order.id)}" type="file" accept="audio/*,.zip,.mp3,.wav,.m4a,.mpeg" />
-      </section>
+      </section>`;
+  } else {
+    panel = `
       <section class="order-section">
-        <h3>Order management</h3>
+        <h3>Production and payment</h3>
         <div class="order-facts">
           <div class="order-fact"><span class="order-fact-label">Production status</span>${statusSelect(order)}<p class="hint">Ordered, In production, Ready for review, and Completed show on the customer portal as soon as you change them. Completed orders move to the Completed tab.</p></div>
           <div class="order-fact"><span class="order-fact-label">Payment status</span>
@@ -494,7 +565,6 @@ function orderDetailHtml(order) {
             </select>
             <p class="hint">Payment stays separate from production. Paid or Not paid shows on the customer portal.</p>
           </div>
-          ${fact("Order date", blank(formatWhen(order.createdAt)))}
         </div>
         ${payments ? `<p class="order-fact-label">Recorded payments</p><ul class="order-payments">${payments}</ul>` : ""}
         <label for="notes-${esc(order.id)}">Order notes</label>
@@ -507,9 +577,25 @@ function orderDetailHtml(order) {
               ? `<button class="btn btn-outline is-danger" type="button" data-delete-customer="${esc(order.email)}">Delete customer</button>`
               : ""
           }
-          <p class="hint">Delete order removes only this mix. Delete customer removes the portal login and every order on this email.</p>
+          <p class="hint">Delete order removes only this order. Delete customer removes the portal login and every order on this email.</p>
         </div>
-      </section>
+      </section>`;
+  }
+  return `
+    <article class="order-detail">
+      <div class="order-detail-head">
+        <div>
+          <button class="btn btn-outline" type="button" data-order-back>Back to orders</button>
+          <h2>${esc(order.gym || teamLabel(order) || "Order")}</h2>
+          <p class="hint">${esc(order.id)} · ${esc(teamLabel(order) || "No team yet")}</p>
+        </div>
+        <p class="order-flags">
+          <span class="order-status ${productionClass(order.status)}">${esc(productionLabel(order.status))}</span>
+          <span class="order-pay ${paymentClass(order)}">${esc(paymentLabel(order))}</span>
+        </p>
+      </div>
+      <div class="desk-tabs">${tabs}</div>
+      ${panel}
     </article>`;
 }
 
@@ -767,6 +853,12 @@ document.addEventListener("DOMContentLoaded", async () => {
       renderOrders();
       return;
     }
+    const section = e.target.closest("[data-admin-section]");
+    if (section) {
+      orderUi.section = section.dataset.adminSection || "overview";
+      renderOrders();
+      return;
+    }
     if (e.target.closest("[data-order-back]")) {
       orderUi.openId = "";
       renderOrders();
@@ -805,6 +897,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     const openOrder = e.target.closest("[data-open-order]");
     if (openOrder) {
       orderUi.openId = openOrder.dataset.openOrder;
+      orderUi.section = "overview";
       renderOrders();
       return;
     }

@@ -1498,4 +1498,45 @@ form.count-sheet label {
     letter-spacing: 0.04em;
     text-transform: uppercase;
   }
+  .admin-stats { grid-template-columns: 1fr 1fr; }
+}
+.admin-stats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  margin: 0 0 14px;
+}
+.admin-stat {
+  display: grid;
+  gap: 2px;
+  padding: 12px;
+  text-align: left;
+  background: #111;
+  border: 1px solid #ffffff22;
+  border-radius: 4px;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+}
+.admin-stat strong { font-size: 22px; }
+.admin-stat span { color: #9a9a9a; font-size: 12px; font-weight: 600; }
+.admin-stat.is-on { border-color: var(--blue); }
+.desk-tabs { display: flex; flex-wrap: wrap; gap: 8px; margin: 4px 0 14px; }
+.desk-tabs .btn { width: auto; }
+.order-gaps { margin: 8px 0 12px; padding-left: 18px; }
+.order-mix-jump {
+  display: block;
+  width: 100%;
+  margin: 0 0 6px;
+  padding: 8px 10px;
+  text-align: left;
+  background: #111;
+  border: 1px solid #ffffff22;
+  border-radius: 4px;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+@media (max-width: 800px) {
+  .admin-stats { grid-template-columns: 1fr 1fr; }
 }
