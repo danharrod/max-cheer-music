@@ -329,7 +329,7 @@ function orderMixes(order) {
     completionDate: order.completionDate || "",
     songs: index === 0 ? order.songs || [] : [],
     countSheet: index === 0 ? order.countSheet || null : null,
-    status: order.status || "received",
+    status: "received",
   }));
 }
 
@@ -483,10 +483,9 @@ function packageName(order) {
   return items.map((item) => `${item.title || item.name || "Mix"}${Number(item.qty) > 1 ? ` ×${Number(item.qty)}` : ""}`).join(", ");
 }
 
-function mixStatus(mix, order) {
+function mixStatus(mix) {
   const value = mix && mix.status;
   if (value === "ready" || value === "review" || value === "in-progress" || value === "received") return value;
-  if (order?.status === "ready" || order?.status === "review" || order?.status === "in-progress") return order.status;
   return "received";
 }
 

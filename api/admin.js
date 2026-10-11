@@ -20,6 +20,7 @@ const {
 } = require("../lib/auth");
 const {
   adminOrder,
+  ensureMixes,
   findOrderFile,
   setProductionStatus,
   setPaymentStatus,
@@ -405,7 +406,9 @@ module.exports = async (req, res) => {
         file,
         kind: "mixes",
       });
-      setProductionStatus(order, "ready");
+      const mixes = ensureMixes(order);
+      order.mixes = mixes;
+      if (mixes.length === 1) setProductionStatus(order, "ready", mixes[0].id);
       const attached = await saveStore(store);
       if (!attached) return res.status(500).json({ error: "Could not save mix upload." });
       return res.status(200).json(adminPayload(store));
@@ -415,6 +418,7 @@ module.exports = async (req, res) => {
       const store = await getStore();
       const order = findOrder(store, body.orderId);
       if (!order) return res.status(404).json({ error: "Order not found" });
+      if (!String(body.mixId || "").trim()) return res.status(400).json({ error: "Choose one team." });
       setProductionStatus(order, body.status, body.mixId);
       const ok = await saveStore(store);
       if (!ok) return res.status(500).json({ error: "Could not save status." });

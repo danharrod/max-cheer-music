@@ -511,4 +511,62 @@ test("existing production statuses stay valid and review is available", () => {
   setProductionStatus(split, "ready", "mix-1");
   setProductionStatus(split, "ready", "mix-2");
   assert.equal(split.status, "ready");
+  const coupled = normalizeOrder({
+    id: "coupled",
+    status: "in-progress",
+    mixes: [
+      { id: "mix-1", teamName: "Warhawks", title: "Allstar" },
+      { id: "mix-2", teamName: "Phoenix", title: "School" },
+    ],
+  });
+  assert.throws(() => setProductionStatus(coupled, "ready"), /Choose one team/);
+  assert.equal(coupled.mixes[0].status, "in-progress");
+  assert.equal(coupled.mixes[1].status, "in-progress");
+  setProductionStatus(coupled, "review", "mix-1");
+  assert.equal(coupled.mixes[0].status, "review");
+  assert.equal(coupled.mixes[1].status, "in-progress");
+  assert.equal(coupled.status, "in-progress");
+});
+
+test("admin status change updates one mix on a shared order", async () => {
+  const adminApi = require("../api/admin");
+  const login = await call(adminApi, { action: "login", password: "test-admin-pass", token: "" });
+  assert.equal(login.statusCode, 200);
+  const placed = await call(orderApi, {
+    method: "paypal",
+    idempotencyKey: "split-status-key",
+    email: "split-status-test@example.com",
+    password: "portal1",
+    gym: "Split Gym",
+    coachFirst: "Sam",
+    coachLast: "Cole",
+    items: [{ id: "school", qty: 1 }, { id: "allstar", qty: 1 }],
+    mixes: [
+      { teamName: "Warhawks", teamColors: "Blue", voiceover: "Hits", completionDate: "2026-12-01" },
+      { teamName: "Phoenix", teamColors: "Red", voiceover: "Chant", completionDate: "2026-12-20" },
+    ],
+  });
+  assert.equal(placed.statusCode, 200);
+  const updated = await call(adminApi, {
+    action: "status",
+    token: login.body.token,
+    orderId: placed.body.orderId,
+    mixId: "mix-1",
+    status: "in-progress",
+  });
+  assert.equal(updated.statusCode, 200);
+  const order = (updated.body.orders || []).find((item) => item.id === placed.body.orderId);
+  assert.equal(order.mixes.find((mix) => mix.id === "mix-1").status, "in-progress");
+  assert.equal(order.mixes.find((mix) => mix.id === "mix-2").status, "received");
+  assert.equal(order.status, "received");
+  const missing = await call(adminApi, {
+    action: "status",
+    token: login.body.token,
+    orderId: placed.body.orderId,
+    status: "ready",
+  });
+  assert.equal(missing.statusCode, 400);
+  const saved = (await getStore()).orders.find((item) => item.id === placed.body.orderId);
+  assert.equal(saved.mixes[0].status, "in-progress");
+  assert.equal(saved.mixes[1].status, "received");
 });

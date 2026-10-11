@@ -137,10 +137,10 @@ function productionClass(status) {
   return "received";
 }
 
-function mixStatus(mix, order) {
+function mixStatus(mix) {
   const value = mix && mix.status;
   if (value === "ready" || value === "review" || value === "in-progress" || value === "received") return value;
-  return productionClass(order && order.status);
+  return "received";
 }
 
 function customerName(order) {
@@ -353,9 +353,10 @@ function renderClips() {
 }
 
 function statusSelect(order, mix) {
-  const current = mixStatus(mix, order);
+  const current = mixStatus(mix);
   const who = mix.teamName || mix.title || "this team";
-  return `<select class="order-status-select" data-status="${esc(order.id)}" data-mix="${esc(mix.id)}" aria-label="Production status for ${esc(who)}">
+  const selectId = `status-${order.id}-${mix.id}`;
+  return `<select class="order-status-select" id="${esc(selectId)}" name="${esc(selectId)}" autocomplete="off" data-status="${esc(order.id)}" data-mix="${esc(mix.id)}" aria-label="Production status for ${esc(who)}">
     ${PRODUCTION_OPTIONS.map(
       (option) => `<option value="${option.value}" ${current === option.value ? "selected" : ""}>${option.label}</option>`
     ).join("")}
@@ -533,7 +534,7 @@ function orderDetailHtml(order) {
         <div class="order-mix-lines">${mixes
           .map(
             (mix, index) =>
-              `<button type="button" class="order-mix-jump" data-admin-section="mixes">${index + 1}. ${esc(mix.title || "Mix")} · ${esc(mix.teamName || "No team")} · ${esc(formatWhen(mix.completionDate, true) || "No date")}</button>`
+              `<button type="button" class="order-mix-jump" data-admin-section="mixes">${index + 1}. ${esc(mix.title || "Mix")} · ${esc(mix.teamName || "No team")} · ${esc(productionLabel(mixStatus(mix)))} · ${esc(formatWhen(mix.completionDate, true) || "No date")}</button>`
           )
           .join("")}</div>
       </section>`;
@@ -564,7 +565,7 @@ function orderDetailHtml(order) {
         ${sheets}
         ${fileHtml}
         <label for="mix-${esc(order.id)}">Upload or replace finished mix</label>
-        <p class="hint">Uploading adds the file to this order and marks production Completed. Earlier files stay attached. The newest mix shows in the customer portal.</p>
+        <p class="hint">Uploading adds the file to this order. Each team keeps its own status. Earlier files stay attached. The newest mix shows in the customer portal.</p>
         <input id="mix-${esc(order.id)}" data-attach="${esc(order.id)}" type="file" accept="audio/*,.zip,.mp3,.wav,.m4a,.mpeg" />
       </section>`;
   } else {
@@ -611,8 +612,8 @@ function orderDetailHtml(order) {
         </div>
         <p class="order-flags">
           ${
-            mixes.every((mix) => mixStatus(mix, order) === mixStatus(mixes[0], order))
-              ? `<span class="order-status ${productionClass(mixStatus(mixes[0], order))}">${esc(productionLabel(mixStatus(mixes[0], order)))}</span>`
+            mixes.every((mix) => mixStatus(mix) === mixStatus(mixes[0]))
+              ? `<span class="order-status ${productionClass(mixStatus(mixes[0]))}">${esc(productionLabel(mixStatus(mixes[0])))}</span>`
               : ""
           }
           <span class="order-pay ${paymentClass(order)}">${esc(paymentLabel(order))}</span>
@@ -817,10 +818,15 @@ document.addEventListener("DOMContentLoaded", async () => {
       }
       return;
     }
-    const status = e.target.closest("[data-status]");
+    const status = e.target.closest("select.order-status-select");
     if (status) {
+      const mixId = String(status.dataset.mix || "").trim();
+      if (!mixId) {
+        setStatus("Choose one team.");
+        return;
+      }
       try {
-        applyState(await api({ action: "status", orderId: status.dataset.status, mixId: status.dataset.mix, status: status.value }));
+        applyState(await api({ action: "status", orderId: status.dataset.status, mixId, status: status.value }));
         setStatus("Team status updated. It now shows on that team's row in the customer portal.");
       } catch (err) {
         setStatus(err.message);
