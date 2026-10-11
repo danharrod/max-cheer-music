@@ -1,4 +1,5 @@
 const { getStore, validToken, validCustomer, readLocalFile } = require("../lib/store");
+const { findOrderFile } = require("../lib/orders");
 
 module.exports = async (req, res) => {
   if (req.method !== "GET") return res.status(405).end("Method not allowed");
@@ -24,13 +25,9 @@ module.exports = async (req, res) => {
   if (!order) return res.status(404).end("Not found");
   if (!isAdmin && order.email !== user.email) return res.status(403).end("Forbidden");
 
-  const file =
-    (order.countSheet && order.countSheet.id === fileId && order.countSheet) ||
-    (order.files || []).find((f) => f.id === fileId);
-  if (!file) return res.status(404).end("File not found");
-
-  const kind = file.kind || (order.countSheet && order.countSheet.id === fileId ? "sheets" : "mixes");
-  return sendFile(res, file, kind);
+  const found = findOrderFile(order, fileId);
+  if (!found) return res.status(404).end("File not found");
+  return sendFile(res, found.file, found.kind);
 };
 
 function sendFile(res, file, kind, disposition) {

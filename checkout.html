@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Anton&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="css/max.css?v=front3" />
+  <link rel="stylesheet" href="css/max.css?v=mix1" />
 </head>
 <body data-page="checkout">
   <main>
@@ -48,6 +48,7 @@
               </div>
               <div class="full">
                 <label for="email">Email <span>(required)</span></label>
+                <p class="hint">Use the same email as your portal if you have already ordered. The new mix is added to that account.</p>
                 <input id="email" type="email" name="email" required autocomplete="email" />
               </div>
               <div class="full step-nav">
@@ -56,42 +57,46 @@
             </div>
           </fieldset>
 
-          <fieldset class="form-section checkout-step" data-step="team">
-            <legend><span class="step-index">2</span> Team and routine</legend>
-            <p class="step-recap" hidden></p>
-            <button type="button" class="step-edit" hidden>Edit</button>
-            <div class="step-body">
-              <div class="full">
-                <label for="completionDate">Requested completion date <span>(required)</span></label>
-                <p class="hint">The earliest date is one week from today. You can choose a later date. MAX will confirm the actual deadline by email.</p>
-                <input id="completionDate" type="date" name="completionDate" required />
+          <template id="mix-step-template">
+            <fieldset class="form-section checkout-step" data-step="mix">
+              <legend><span class="step-index"></span> <span class="mix-step-label">Team and routine</span></legend>
+              <p class="step-recap" hidden></p>
+              <button type="button" class="step-edit" hidden>Edit</button>
+              <div class="step-body">
+                <p class="hint mix-step-hint full">These details are for this mix only.</p>
+                <div class="full">
+                  <label data-for-field="completionDate">Requested completion date <span>(required)</span></label>
+                  <p class="hint">The earliest date is one week from today. You can choose a later date. MAX will confirm the actual deadline by email.</p>
+                  <input data-mix-field="completionDate" type="date" required />
+                </div>
+                <div class="full">
+                  <label data-for-field="teamName">Team name <span>(required)</span></label>
+                  <input data-mix-field="teamName" required />
+                </div>
+                <div class="full">
+                  <label data-for-field="teamColors">Team colors <span>(required)</span></label>
+                  <input data-mix-field="teamColors" required />
+                </div>
+                <div class="full">
+                  <label data-for-field="voiceover">Voiceover ideas <span>(required)</span></label>
+                  <p class="hint">Include themes, sayings, or ideas you want in the custom sections of the music.</p>
+                  <textarea data-mix-field="voiceover" required></textarea>
+                </div>
+                <div class="full step-nav">
+                  <button type="button" class="btn step-next">Continue</button>
+                </div>
               </div>
-              <div class="full">
-                <label for="teamName">Team name <span>(required)</span></label>
-                <input id="teamName" name="teamName" required />
-              </div>
-              <div class="full">
-                <label for="teamColors">Team colors <span>(required)</span></label>
-                <input id="teamColors" name="teamColors" required />
-              </div>
-              <div class="full">
-                <label for="voiceover">Voiceover ideas <span>(required)</span></label>
-                <p class="hint">Include themes, sayings, or ideas you want in the custom sections of the music.</p>
-                <textarea id="voiceover" name="voiceover" required></textarea>
-              </div>
-              <div class="full step-nav">
-                <button type="button" class="btn step-next">Continue</button>
-              </div>
-            </div>
-          </fieldset>
+            </fieldset>
+          </template>
 
           <fieldset class="form-section checkout-step" data-step="portal">
             <legend><span class="step-index">3</span> Portal access</legend>
             <p class="step-recap" hidden></p>
             <button type="button" class="step-edit" hidden>Edit</button>
             <div class="step-body">
-              <p class="hint">New customers create portal access here. Returning customers: your existing password stays in place even if you type one here. MAX will not replace it.</p>
-              <div class="full">
+              <p class="hint" id="portal-new-note">New customers create portal access here. You will use this email and password to see every mix you order.</p>
+              <p class="hint" id="portal-return-note" hidden>This email already has a portal. This order is added to that account. Log in with the password you already use. You do not need a new account.</p>
+              <div class="full" id="portal-password-wrap">
                 <label for="password">Portal password <span>(required for new accounts)</span></label>
                 <p class="hint">Use this email and password later to enter 5 songs, upload your count sheet, and download your mix. Passwords are not saved in your browser storage by this site.</p>
                 <input id="password" type="password" name="password" minlength="6" required autocomplete="new-password" />
@@ -135,6 +140,6 @@
   </main>
   <script src="js/cart.js?v=front1"></script>
   <script src="js/site.js?v=front1"></script>
-  <script src="js/checkout.js?v=front3"></script>
+  <script src="js/checkout.js?v=mix1"></script>
 </body>
 </html>

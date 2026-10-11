@@ -150,6 +150,55 @@ test("orders use catalog prices, block duplicates, and stay unpaid", async () =>
   assert.equal(after.orders.filter((o) => o.email === "order@example.com").length, 1);
 });
 
+test("admin can delete one order or a customer and their orders", async () => {
+  const adminApi = require("../api/admin");
+  const login = await call(adminApi, { action: "login", password: "test-admin-pass", token: "" });
+  assert.equal(login.statusCode, 200);
+  const base = {
+    method: "paypal",
+    email: "delete-me@example.com",
+    password: "portal1",
+    gym: "Delete Gym",
+    coachFirst: "Pat",
+    coachLast: "Lee",
+    teamColors: "Blue",
+    voiceover: "Hits",
+    completionDate: "2026-12-01",
+    items: [{ id: "school", qty: 1 }],
+  };
+  const first = await call(orderApi, { ...base, idempotencyKey: "delete-key-1", teamName: "Keep Me" });
+  const second = await call(orderApi, { ...base, idempotencyKey: "delete-key-2", teamName: "Remove Me" });
+  assert.equal(first.statusCode, 200);
+  assert.equal(second.statusCode, 200);
+
+  const removed = await call(adminApi, {
+    action: "delete-order",
+    token: login.body.token,
+    orderId: second.body.orderId,
+  });
+  assert.equal(removed.statusCode, 200);
+  assert.equal((removed.body.orders || []).some((order) => order.id === second.body.orderId), false);
+  assert.equal((removed.body.orders || []).some((order) => order.id === first.body.orderId), true);
+
+  const still = await call(portal, { action: "login", email: "delete-me@example.com", password: "portal1" });
+  assert.equal(still.statusCode, 200);
+  assert.equal(still.body.orders.length, 1);
+
+  const gone = await call(adminApi, {
+    action: "delete-customer",
+    token: login.body.token,
+    email: "delete-me@example.com",
+  });
+  assert.equal(gone.statusCode, 200);
+  assert.equal((gone.body.orders || []).some((order) => order.email === "delete-me@example.com"), false);
+  const locked = await call(portal, { action: "login", email: "delete-me@example.com", password: "portal1" });
+  assert.equal(locked.statusCode, 401);
+
+  const adminJs = fs.readFileSync(path.join(__dirname, "..", "js/admin.js"), "utf8");
+  assert.match(adminJs, /data-delete-order=/);
+  assert.match(adminJs, /data-delete-customer=/);
+});
+
 test("admin mix attach by url shows on the customer order", async () => {
   const adminApi = require("../api/admin");
   const login = await call(adminApi, { action: "login", password: "test-admin-pass", token: "" });
@@ -184,6 +233,85 @@ test("admin mix attach by url shows on the customer order", async () => {
   const pub = publicOrder(saved);
   assert.equal(pub.files[0].name, "elite-mix.mp3");
   assert.equal(pub.status, "ready");
+});
+
+test("each mix keeps its own team details and license fields", async () => {
+  const placed = await call(orderApi, {
+    method: "paypal",
+    idempotencyKey: "two-mix-key",
+    email: "two-mix@example.com",
+    password: "portal1",
+    gym: "Two Gym",
+    coachFirst: "Pat",
+    coachLast: "Lee",
+    items: [{ id: "school", qty: 1 }, { id: "allstar", qty: 1 }],
+    mixes: [
+      { teamName: "Cougars", teamColors: "Blue", voiceover: "Loud", completionDate: "2026-12-01" },
+      { teamName: "Elite", teamColors: "Gold", voiceover: "Hits", completionDate: "2026-12-15" },
+    ],
+  });
+  assert.equal(placed.statusCode, 200);
+  const saved = (await getStore()).orders.find((order) => order.id === placed.body.orderId);
+  assert.equal(saved.mixes.length, 2);
+  assert.equal(saved.mixes[0].teamName, "Cougars");
+  assert.equal(saved.mixes[0].title, "School Mix");
+  assert.equal(saved.mixes[1].teamName, "Elite");
+  assert.equal(saved.mixes[1].title, "Allstar Mix");
+  assert.equal(saved.teamName, "Cougars");
+
+  const short = await call(orderApi, {
+    method: "paypal",
+    idempotencyKey: "two-mix-short",
+    email: "two-mix@example.com",
+    password: "portal1",
+    gym: "Two Gym",
+    coachFirst: "Pat",
+    coachLast: "Lee",
+    items: [{ id: "school", qty: 2 }],
+    mixes: [{ teamName: "Only One", teamColors: "Blue", voiceover: "Loud", completionDate: "2026-12-01" }],
+  });
+  assert.equal(short.statusCode, 400);
+
+  const customer = await call(portal, { action: "login", email: "two-mix@example.com", password: "portal1" });
+  assert.equal(customer.statusCode, 200);
+  const seen = customer.body.orders.find((order) => order.id === placed.body.orderId);
+  assert.equal(seen.mixes[1].teamName, "Elite");
+
+  const songs = await call(portal, {
+    action: "songs",
+    email: "two-mix@example.com",
+    token: customer.body.token,
+    orderId: placed.body.orderId,
+    mixId: "mix-2",
+    songs: ["One", "Two", "Three", "Four", "Five"],
+  });
+  assert.equal(songs.statusCode, 200);
+  const afterSongs = songs.body.orders.find((order) => order.id === placed.body.orderId);
+  assert.deepEqual(afterSongs.mixes[1].songs, ["One", "Two", "Three", "Four", "Five"]);
+  assert.deepEqual(afterSongs.mixes[0].songs, ["", "", "", "", ""]);
+
+  const details = await call(portal, {
+    action: "mix",
+    email: "two-mix@example.com",
+    token: customer.body.token,
+    orderId: placed.body.orderId,
+    mixId: "mix-1",
+    teamName: "Cougars Blue",
+    teamColors: "Blue",
+    voiceover: "Loud",
+    completionDate: "2026-12-01",
+  });
+  assert.equal(details.statusCode, 200);
+  const afterDetails = details.body.orders.find((order) => order.id === placed.body.orderId);
+  assert.equal(afterDetails.mixes[0].teamName, "Cougars Blue");
+  assert.equal(afterDetails.mixes[1].teamName, "Elite");
+
+  const portalJs = fs.readFileSync(path.join(__dirname, "..", "js/portal.js"), "utf8");
+  const checkout = fs.readFileSync(path.join(__dirname, "..", "checkout.html"), "utf8");
+  assert.match(portalJs, /data-doc="license"/);
+  assert.match(portalJs, /data-save-mix=/);
+  assert.match(checkout, /mix-step-template/);
+  assert.match(checkout, /data-step="mix"/);
 });
 
 test("shop and checkout copy match the real flow", () => {

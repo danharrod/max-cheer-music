@@ -61,13 +61,9 @@ function checkoutFacts(o) {
       ${fact("Gym or school", blank(o.gym))}
       ${fact("Coach", blank(coach))}
       ${fact("Email", blank(o.email))}
-      ${fact("Requested date", blank(o.completionDate))}
-      ${fact("Team name", blank(o.teamName))}
-      ${fact("Team colors", blank(o.teamColors))}
       ${fact("Payment", esc(payMethodLabel(o.method)))}
       ${fact("PO number", blank(o.poNumber))}
-      ${fact("Mix", mixLine(o), true)}
-      ${fact("Voiceover ideas", blank(o.voiceover), true)}
+      ${fact("Mixes", mixLine(o), true)}
     </div>`;
 }
 
@@ -152,7 +148,12 @@ function lineRows(order) {
 
 function orderFingerprint(orders) {
   return (orders || [])
-    .map((o) => `${o.id}:${o.status}:${o.paymentStatus || "unpaid"}:${(o.files || []).length}:${o.countSheet?.id || ""}`)
+    .map((o) => {
+      const mixes = orderMixes(o)
+        .map((mix) => `${mix.id}:${mix.teamName}:${(mix.songs || []).join(",")}:${mix.countSheet?.id || ""}`)
+        .join(";");
+      return `${o.id}:${o.status}:${o.paymentStatus || "unpaid"}:${(o.files || []).length}:${mixes}`;
+    })
     .join("|");
 }
 
@@ -254,11 +255,11 @@ function fileToBase64(file) {
   });
 }
 
-function songFields(order) {
+function songFields(order, mix) {
   return `<div class="song-grid">${[0, 1, 2, 3, 4]
     .map((i) => {
-      const value = esc((order.songs || [])[i] || "");
-      return `<label class="song-field">Song ${i + 1}<input data-song="${order.id}" data-i="${i}" value="${value}" /></label>`;
+      const value = esc((mix.songs || [])[i] || "");
+      return `<label class="song-field">Song ${i + 1}<input data-song="${esc(order.id)}" data-mix="${esc(mix.id)}" data-i="${i}" value="${value}" /></label>`;
     })
     .join("")}</div>`;
 }
@@ -285,25 +286,44 @@ function seasonLabel(iso) {
   return `${start}-${start + 1}`;
 }
 
-function mixName(order) {
+function orderMixes(order) {
+  if (Array.isArray(order.mixes) && order.mixes.length) return order.mixes;
   const items = Array.isArray(order.items) ? order.items : [];
-  if (!items.length) return "Cheer music mix";
-  return items
-    .map((item) => {
-      const title = item.title || item.name || "Mix";
-      const qty = Number(item.qty) || 1;
-      return qty > 1 ? `${title} ×${qty}` : title;
-    })
-    .join(", ");
+  const units = [];
+  items.forEach((item) => {
+    const qty = Math.max(1, Math.floor(Number(item.qty) || 1));
+    for (let i = 0; i < qty; i += 1) units.push(item);
+  });
+  const base = units.length ? units : [{ title: "Mix" }];
+  return base.map((item, index) => ({
+    id: `mix-${index + 1}`,
+    title: item.title || item.name || "Mix",
+    teamName: index === 0 ? order.teamName || "" : "",
+    teamColors: index === 0 ? order.teamColors || "" : "",
+    voiceover: index === 0 ? order.voiceover || "" : "",
+    completionDate: order.completionDate || "",
+    songs: index === 0 ? order.songs || [] : [],
+    countSheet: index === 0 ? order.countSheet || null : null,
+  }));
 }
 
-function licenseHtml(order, data) {
+function mixKey(orderId, mixId) {
+  return `${orderId}--${mixId}`;
+}
+
+function teamTitle(order) {
+  const names = orderMixes(order).map((mix) => String(mix.teamName || "").trim()).filter(Boolean);
+  if (names.length) return names.join(" · ");
+  return order.teamName || "Order";
+}
+
+function licenseHtml(order, mix, data) {
   const coach = [order.coachFirst, order.coachLast].filter((part) => String(part || "").trim()).join(" ") || "—";
   const rows = [
     ["Organization", order.gym || "—"],
     ["Coach name", coach],
-    ["Team name", order.teamName || "—"],
-    ["Mix", mixName(order)],
+    ["Team name", mix.teamName || "—"],
+    ["Mix", mix.title || "Cheer music mix"],
   ];
   return `
     ${accountBar(data)}
@@ -341,7 +361,6 @@ function licenseHtml(order, data) {
 }
 
 function documentHtml(order, kind, data) {
-  if (kind === "license") return licenseHtml(order, data);
   const billing = billingOf(data);
   const quote = kind === "quote";
   const coach = [order.coachFirst, order.coachLast].filter((part) => String(part || "").trim()).join(" ");
@@ -388,7 +407,7 @@ function documentHtml(order, kind, data) {
         <p>${esc(order.gym || "—")}</p>
         <p>${esc(coach || "—")}</p>
         <p>${esc(order.email || "")}</p>
-        <p>${esc(order.teamName || "")}</p>
+        <p>${esc(orderMixes(order).map((mix) => mix.teamName).filter(Boolean).join(", "))}</p>
         ${order.poNumber ? `<p>PO number ${esc(order.poNumber)}</p>` : ""}
       </section>
       <table class="doc-lines">
@@ -412,6 +431,50 @@ function documentHtml(order, kind, data) {
     </article>`;
 }
 
+function mixCard(order, mix, index, total, data) {
+  const key = mixKey(order.id, mix.id);
+  return `
+    <section class="portal-mix-card" data-mix-card="${esc(key)}">
+      <h3>${esc(mix.title || "Mix")}${total > 1 ? ` <span class="hint">Mix ${index + 1} of ${total}</span>` : ""}</h3>
+      <div class="song-box">
+        <p class="field-label">Team and routine</p>
+        <div class="mix-fields">
+          <label>Team name<input data-mix-field="teamName" value="${esc(mix.teamName || "")}" /></label>
+          <label>Team colors<input data-mix-field="teamColors" value="${esc(mix.teamColors || "")}" /></label>
+          <label>Requested date<input data-mix-field="completionDate" type="date" value="${esc(mix.completionDate || "")}" /></label>
+          <label>Voiceover ideas<textarea data-mix-field="voiceover">${esc(mix.voiceover || "")}</textarea></label>
+        </div>
+        <p><button class="btn" type="button" data-save-mix="${esc(order.id)}" data-mix="${esc(mix.id)}">Save mix details</button></p>
+        <p class="hint" data-mix-status="${esc(key)}"></p>
+      </div>
+      <div class="song-box">
+        <p class="field-label">Your 5 songs</p>
+        <p class="hint">Type names from <a href="https://songsforcheer.com" target="_blank" rel="noreferrer">songsforcheer.com</a>.</p>
+        ${songFields(order, mix)}
+        <p><button class="btn" type="button" data-save-songs="${esc(order.id)}" data-mix="${esc(mix.id)}">Save songs</button></p>
+        <p class="hint" data-song-status="${esc(key)}"></p>
+      </div>
+      <div class="song-box">
+        <p class="field-label">Count sheet PDF</p>
+        <p class="hint">Fill and upload from <a href="sheets.html">8 Count Sheets</a>.</p>
+        ${
+          mix.countSheet
+            ? `<p><a class="btn btn-outline" href="${downloadUrl(order, mix.countSheet, data.auth)}">Download ${esc(mix.countSheet.name)}</a></p>`
+            : `<p class="hint">No count sheet yet.</p>`
+        }
+        <input data-sheet="${esc(order.id)}" data-mix="${esc(mix.id)}" type="file" accept="application/pdf,.pdf" />
+        <p class="hint" data-sheet-status="${esc(key)}"></p>
+      </div>
+      <p class="portal-doc-links">
+        ${
+          isPaid(order)
+            ? `<button type="button" data-doc="license" data-order="${esc(order.id)}" data-mix="${esc(mix.id)}">Proof of license</button>`
+            : `<span class="hint">Proof of license for this mix is available after the order is paid.</span>`
+        }
+      </p>
+    </section>`;
+}
+
 function render(data) {
   portalState = data;
   document.body.classList.add("portal-in");
@@ -420,7 +483,14 @@ function render(data) {
   login.hidden = true;
   app.hidden = false;
   const open = docView ? (data.orders || []).find((order) => order.id === docView.orderId) : null;
-  if (!open || (docView.kind === "license" && !isPaid(open))) docView = null;
+  const licenseMix = open && docView?.kind === "license"
+    ? orderMixes(open).find((mix) => mix.id === docView.mixId)
+    : null;
+  if (!open || (docView?.kind === "license" && (!isPaid(open) || !licenseMix))) docView = null;
+  if (open && docView?.kind === "license" && licenseMix) {
+    app.innerHTML = licenseHtml(open, licenseMix, data);
+    return;
+  }
   if (open && docView) {
     app.innerHTML = documentHtml(open, docView.kind, data);
     return;
@@ -432,7 +502,7 @@ function render(data) {
         (o) => `
       <article class="product portal-order">
         <div class="portal-order-head">
-          <h2>${esc(o.teamName || "Order")} · $${Number(o.total || 0).toLocaleString("en-US")}</h2>
+          <h2>${esc(teamTitle(o))} · $${Number(o.total || 0).toLocaleString("en-US")}</h2>
           <div class="order-flags">
             <p class="order-status ${statusClass(o.status)}">${esc(statusLabel(o.status))}</p>
             <p class="order-pay ${isPaid(o) ? "is-paid" : "is-unpaid"}">${isPaid(o) ? "Paid" : "Not paid"}</p>
@@ -441,7 +511,6 @@ function render(data) {
         <p class="portal-doc-links">
           <button type="button" data-doc="quote" data-order="${esc(o.id)}">Quote</button>
           <button type="button" data-doc="invoice" data-order="${esc(o.id)}">Invoice</button>
-          ${isPaid(o) ? `<button type="button" data-doc="license" data-order="${esc(o.id)}">Proof of license</button>` : ""}
         </p>
         ${checkoutFacts(o)}
         <div class="song-box portal-mix${(o.files || []).length ? " is-ready" : ""}">
@@ -452,24 +521,7 @@ function render(data) {
                 .join("")
             : `<p class="hint">MAX will post the mix here when it is ready.</p>`}
         </div>
-        <div class="song-box">
-          <p class="field-label">Your 5 songs</p>
-          <p class="hint">Type names from <a href="https://songsforcheer.com" target="_blank" rel="noreferrer">songsforcheer.com</a>.</p>
-          ${songFields(o)}
-          <p><button class="btn" type="button" data-save-songs="${o.id}">Save songs</button></p>
-          <p class="hint" data-song-status="${o.id}"></p>
-        </div>
-        <div class="song-box">
-          <p class="field-label">Count sheet PDF</p>
-          <p class="hint">Fill and upload from <a href="sheets.html">8 Count Sheets</a>.</p>
-          ${
-            o.countSheet
-              ? `<p><a class="btn btn-outline" href="${downloadUrl(o, o.countSheet, data.auth)}">Download ${esc(o.countSheet.name)}</a></p>`
-              : `<p class="hint">No count sheet yet.</p>`
-          }
-          <input data-sheet="${o.id}" type="file" accept="application/pdf,.pdf" />
-          <p class="hint" data-sheet-status="${o.id}"></p>
-        </div>
+        ${orderMixes(o).map((mix, index, list) => mixCard(o, mix, index, list.length, data)).join("")}
       </article>`
       )
       .join("") || `<p class="hint">No orders on this account yet.</p>`}
@@ -502,10 +554,28 @@ async function login(email, password) {
   return data;
 }
 
-function readSongs(orderId) {
-  return [...document.querySelectorAll(`[data-song="${orderId}"]`)]
+function readSongs(orderId, mixId) {
+  return [...document.querySelectorAll(`[data-song="${orderId}"][data-mix="${mixId}"]`)]
     .sort((a, b) => Number(a.dataset.i) - Number(b.dataset.i))
     .map((input) => input.value.trim());
+}
+
+function readMix(orderId, mixId) {
+  const card = document.querySelector(`[data-mix-card="${mixKey(orderId, mixId)}"]`);
+  const value = (name) => card?.querySelector(`[data-mix-field="${name}"]`)?.value.trim() || "";
+  return {
+    teamName: value("teamName"),
+    teamColors: value("teamColors"),
+    voiceover: value("voiceover"),
+    completionDate: value("completionDate"),
+  };
+}
+
+function previewMix(orderId, mixId) {
+  const order = (portalState?.orders || []).find((item) => item.id === orderId);
+  if (!order) return null;
+  if (!Array.isArray(order.mixes) || !order.mixes.length) order.mixes = orderMixes(order);
+  return order.mixes.find((mix) => mix.id === mixId) || null;
 }
 
 document.addEventListener("DOMContentLoaded", async () => {
@@ -531,28 +601,54 @@ document.addEventListener("DOMContentLoaded", async () => {
       const kind = doc.dataset.doc === "invoice" ? "invoice" : doc.dataset.doc === "license" ? "license" : "quote";
       const order = (portalState?.orders || []).find((item) => item.id === doc.dataset.order);
       if (kind === "license" && !isPaid(order || {})) return;
-      docView = { orderId: doc.dataset.order, kind };
+      if (kind === "license" && !doc.dataset.mix) return;
+      docView = { orderId: doc.dataset.order, kind, mixId: doc.dataset.mix || "" };
       render(portalState);
+      return;
+    }
+    const saveMix = e.target.closest("[data-save-mix]");
+    if (saveMix) {
+      const orderId = saveMix.dataset.saveMix;
+      const mixId = saveMix.dataset.mix;
+      const key = mixKey(orderId, mixId);
+      const status = document.querySelector(`[data-mix-status="${key}"]`);
+      const details = readMix(orderId, mixId);
+      try {
+        if (isPreview()) {
+          const mix = previewMix(orderId, mixId);
+          if (mix) Object.assign(mix, details);
+          if (status) status.textContent = "Mix details saved in preview.";
+          return;
+        }
+        if (status) status.textContent = "Saving…";
+        render(await api({ action: "mix", orderId, mixId, ...details }));
+        const next = document.querySelector(`[data-mix-status="${key}"]`);
+        if (next) next.textContent = "Mix details saved.";
+      } catch (err) {
+        if (status) status.textContent = err.message;
+      }
       return;
     }
     const save = e.target.closest("[data-save-songs]");
     if (!save) return;
     const orderId = save.dataset.saveSongs;
-    const status = document.querySelector(`[data-song-status="${orderId}"]`);
-    const songs = readSongs(orderId);
+    const mixId = save.dataset.mix;
+    const key = mixKey(orderId, mixId);
+    const status = document.querySelector(`[data-song-status="${key}"]`);
+    const songs = readSongs(orderId, mixId);
     try {
       if (isPreview()) {
-        const order = portalState.orders.find((o) => o.id === orderId);
-        if (order) order.songs = songs;
-        status.textContent = "Songs saved in preview.";
+        const mix = previewMix(orderId, mixId);
+        if (mix) mix.songs = songs;
+        if (status) status.textContent = "Songs saved in preview.";
         return;
       }
-      status.textContent = "Saving…";
-      render(await api({ action: "songs", orderId, songs }));
-      const next = document.querySelector(`[data-song-status="${orderId}"]`);
+      if (status) status.textContent = "Saving…";
+      render(await api({ action: "songs", orderId, mixId, songs }));
+      const next = document.querySelector(`[data-song-status="${key}"]`);
       if (next) next.textContent = "Songs saved.";
     } catch (err) {
-      status.textContent = err.message;
+      if (status) status.textContent = err.message;
     }
   });
 
@@ -586,27 +682,29 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (!input || !input.files[0]) return;
     const file = input.files[0];
     const orderId = input.dataset.sheet;
-    const status = document.querySelector(`[data-sheet-status="${orderId}"]`);
+    const mixId = input.dataset.mix;
+    const key = mixKey(orderId, mixId);
+    const status = document.querySelector(`[data-sheet-status="${key}"]`);
     if (!/\.pdf$/i.test(file.name)) {
-      status.textContent = "Upload a PDF count sheet.";
+      if (status) status.textContent = "Upload a PDF count sheet.";
       return;
     }
     try {
       if (isPreview()) {
-        const order = portalState.orders.find((o) => o.id === orderId);
-        if (order) order.countSheet = { id: `sheet-${Date.now()}`, name: file.name };
+        const mix = previewMix(orderId, mixId);
+        if (mix) mix.countSheet = { id: `sheet-${Date.now()}`, name: file.name };
         render(portalState);
-        const next = document.querySelector(`[data-sheet-status="${orderId}"]`);
+        const next = document.querySelector(`[data-sheet-status="${key}"]`);
         if (next) next.textContent = "Count sheet added in preview.";
         return;
       }
-      status.textContent = "Uploading…";
+      if (status) status.textContent = "Uploading…";
       const data = await fileToBase64(file);
-      render(await api({ action: "sheet", orderId, filename: file.name, data }));
-      const next = document.querySelector(`[data-sheet-status="${orderId}"]`);
+      render(await api({ action: "sheet", orderId, mixId, filename: file.name, data }));
+      const next = document.querySelector(`[data-sheet-status="${key}"]`);
       if (next) next.textContent = "Count sheet uploaded.";
     } catch (err) {
-      status.textContent = err.message;
+      if (status) status.textContent = err.message;
     }
   });
 

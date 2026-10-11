@@ -20,6 +20,7 @@ const {
 } = require("../lib/auth");
 const {
   adminOrder,
+  findOrderFile,
   setProductionStatus,
   setPaymentStatus,
   recordPayment,
@@ -450,15 +451,37 @@ module.exports = async (req, res) => {
       return res.status(200).json(adminPayload(await getStore()));
     }
 
+    if (action === "delete-order") {
+      const store = await getStore();
+      const id = String(body.orderId || "").trim();
+      const before = (store.orders || []).length;
+      store.orders = (store.orders || []).filter((order) => order.id !== id);
+      if (!id || store.orders.length === before) return res.status(404).json({ error: "Order not found" });
+      const ok = await saveStore(store);
+      if (!ok) return res.status(500).json({ error: "Could not delete the order." });
+      return res.status(200).json(adminPayload(store));
+    }
+
+    if (action === "delete-customer") {
+      const store = await getStore();
+      const email = String(body.email || "").toLowerCase().trim();
+      if (!email) return res.status(400).json({ error: "Missing customer" });
+      const hadUser = (store.users || []).some((user) => user.email === email);
+      const hadOrders = (store.orders || []).some((order) => String(order.email || "").toLowerCase() === email);
+      if (!hadUser && !hadOrders) return res.status(404).json({ error: "Customer not found" });
+      store.users = (store.users || []).filter((user) => user.email !== email);
+      store.orders = (store.orders || []).filter((order) => String(order.email || "").toLowerCase() !== email);
+      const ok = await saveStore(store);
+      if (!ok) return res.status(500).json({ error: "Could not delete the customer." });
+      return res.status(200).json(adminPayload(store));
+    }
+
     if (action === "download-ticket") {
       const store = await getStore();
       const order = findOrder(store, body.orderId);
       if (!order) return res.status(404).json({ error: "Order not found" });
       const fileId = String(body.fileId || "").trim();
-      const file =
-        (order.countSheet && order.countSheet.id === fileId && order.countSheet) ||
-        (order.files || []).find((f) => f.id === fileId);
-      if (!file) return res.status(404).json({ error: "File not found" });
+      if (!findOrderFile(order, fileId)) return res.status(404).json({ error: "File not found" });
       return res.status(200).json({ ticket: makeDownloadTicket({ orderId: order.id, fileId }) });
     }
 

@@ -198,9 +198,16 @@ function ordersInTab(tab) {
   });
 }
 
+function teamLabel(order) {
+  const names = (Array.isArray(order.mixes) ? order.mixes : []).map((mix) => mix.teamName).filter(Boolean);
+  if (names.length) return names.join(" · ");
+  return order.teamName || "";
+}
+
 function orderMatches(order, query) {
   if (!query) return true;
-  const haystack = [order.id, order.gym, order.teamName, customerName(order), order.coachFirst, order.coachLast]
+  const mixText = (order.mixes || []).map((mix) => `${mix.teamName || ""} ${mix.title || ""}`).join(" ");
+  const haystack = [order.id, order.gym, order.teamName, teamLabel(order), mixText, customerName(order), order.coachFirst, order.coachLast]
     .join(" ")
     .toLowerCase();
   return haystack.includes(query);
@@ -315,7 +322,7 @@ function orderRow(order) {
     <button class="order-row${due ? ` is-${due}` : ""}" type="button" data-open-order="${esc(order.id)}">
       <span class="order-cell" data-label="Order"><span class="order-id">${esc(order.id)}</span></span>
       <span class="order-cell" data-label="Gym"><strong>${blank(order.gym)}</strong></span>
-      <span class="order-cell" data-label="Team">${blank(order.teamName)}</span>
+      <span class="order-cell" data-label="Team">${blank(teamLabel(order))}</span>
       <span class="order-cell" data-label="Package">${blank(packageName(order))}</span>
       <span class="order-cell" data-label="Competition date">${when ? esc(when) : "—"}${dueText ? `<span class="order-due">${dueText}</span>` : ""}</span>
       <span class="order-cell" data-label="Production"><span class="order-status ${productionClass(order.status)}">${esc(productionLabel(order.status))}</span></span>
@@ -373,15 +380,39 @@ function fileBlock(order, file, label) {
   return `<div class="order-file"><p class="order-fact-label">${esc(label)}</p><p><a href="${esc(href)}">${esc(file.name)}</a></p>${audio}</div>`;
 }
 
-function orderDetailHtml(order) {
-  const songs = (order.songs || []).map((song) => String(song || "").trim()).filter(Boolean);
+function mixDetailHtml(mix) {
+  const songs = (mix.songs || []).map((song) => String(song || "").trim()).filter(Boolean);
   const songHtml = songs.length ? `<ol class="order-songs">${songs.map((song) => `<li>${esc(song)}</li>`).join("")}</ol>` : "—";
+  return `
+    <div class="order-mix-block">
+      <p class="field-label">${esc(mix.title || "Mix")}</p>
+      <div class="order-facts">
+        ${fact("Team name", blank(mix.teamName))}
+        ${fact("Team colors", blank(mix.teamColors))}
+        ${fact("Requested completion date", blank(mix.completionDate))}
+        ${fact("Voiceover ideas", blank(mix.voiceover), true)}
+        ${fact("Song choices", songHtml, true)}
+      </div>
+    </div>`;
+}
+
+function orderDetailHtml(order) {
+  const mixes = Array.isArray(order.mixes) && order.mixes.length ? order.mixes : [{
+    title: "Mix",
+    teamName: order.teamName,
+    teamColors: order.teamColors,
+    voiceover: order.voiceover,
+    completionDate: order.completionDate,
+    songs: order.songs,
+    countSheet: order.countSheet,
+  }];
   const files = [...(order.files || [])].reverse();
   const fileHtml = files.length
     ? files.map((file) => fileBlock(order, file, "Finished mix")).join("")
     : `<p class="hint">No mix uploaded yet.</p>`;
-  const sheetHtml = order.countSheet
-    ? fileBlock(order, order.countSheet, "Count sheet")
+  const sheets = mixes.filter((mix) => mix.countSheet);
+  const sheetHtml = sheets.length
+    ? sheets.map((mix) => fileBlock(order, mix.countSheet, `${mix.teamName || mix.title || "Mix"} count sheet`)).join("")
     : `<p class="hint">No count sheet uploaded yet.</p>`;
   const payments = (order.payments || [])
     .map((payment) => `<li>${esc(payMethodLabel(payment.method))} · $${Number(payment.amount || 0).toLocaleString("en-US")}${payment.reference ? ` · ${esc(payment.reference)}` : ""}${payment.date ? ` · ${esc(payment.date)}` : ""}</li>`)
@@ -394,7 +425,7 @@ function orderDetailHtml(order) {
       <div class="order-detail-head">
         <div>
           <button class="btn btn-outline" type="button" data-order-back>Back to orders</button>
-          <h2>${esc(order.teamName || order.gym || "Order")}</h2>
+          <h2>${esc(teamLabel(order) || order.gym || "Order")}</h2>
           <p class="hint">${esc(order.id)}</p>
         </div>
         <p class="order-flags">
@@ -408,22 +439,18 @@ function orderDetailHtml(order) {
           ${fact("Gym or school name", blank(order.gym))}
           ${fact("Customer name", blank(customerName(order)))}
           ${fact("Email", blank(order.email))}
-          ${fact("Team name", blank(order.teamName))}
+          ${fact("Team name", blank(teamLabel(order)))}
         </div>
       </section>
       <section class="order-section">
         <h3>Music order information</h3>
         <div class="order-facts">
           ${fact("Package ordered", blank(packageName(order)), true)}
-          ${fact("Competition date", blank(formatWhen(order.completionDate, true)))}
-          ${fact("Requested completion date", blank(order.completionDate))}
-          ${fact("Team colors", blank(order.teamColors))}
-          ${fact("Voiceover ideas", blank(order.voiceover), true)}
-          ${fact("Song choices", songHtml, true)}
           ${fact("Payment method", esc(payMethodLabel(order.method)))}
           ${fact("PO number", blank(order.poNumber))}
           ${fact("Total", `$${Number(order.total || 0).toLocaleString("en-US")}`)}
         </div>
+        ${mixes.map((mix) => mixDetailHtml(mix)).join("")}
       </section>
       <section class="order-section">
         <h3>Files</h3>
@@ -450,6 +477,15 @@ function orderDetailHtml(order) {
         <label for="notes-${esc(order.id)}">Order notes</label>
         <textarea id="notes-${esc(order.id)}" data-notes="${esc(order.id)}">${esc(order.notes || "")}</textarea>
         ${activity ? `<details class="order-activity"><summary>Activity</summary><ul>${activity}</ul></details>` : ""}
+        <div class="order-danger">
+          <button class="btn btn-outline is-danger" type="button" data-delete-order="${esc(order.id)}">Delete order</button>
+          ${
+            order.email
+              ? `<button class="btn btn-outline is-danger" type="button" data-delete-customer="${esc(order.email)}">Delete customer</button>`
+              : ""
+          }
+          <p class="hint">Delete order removes only this mix. Delete customer removes the portal login and every order on this email.</p>
+        </div>
       </section>
     </article>`;
 }
@@ -711,6 +747,36 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (e.target.closest("[data-order-back]")) {
       orderUi.openId = "";
       renderOrders();
+      return;
+    }
+    const deleteOrder = e.target.closest("[data-delete-order]");
+    if (deleteOrder) {
+      const order = state.orders.find((item) => item.id === deleteOrder.dataset.deleteOrder);
+      const label = order?.teamName || order?.gym || "this order";
+      if (!window.confirm(`Delete the order for ${label}? This removes only this order.`)) return;
+      try {
+        orderUi.openId = "";
+        applyState(await api({ action: "delete-order", orderId: deleteOrder.dataset.deleteOrder }));
+        setStatus("Order deleted.");
+      } catch (err) {
+        setStatus(err.message || "Could not delete the order.");
+      }
+      return;
+    }
+    const deleteCustomer = e.target.closest("[data-delete-customer]");
+    if (deleteCustomer) {
+      const email = deleteCustomer.dataset.deleteCustomer;
+      const matches = state.orders.filter((item) => String(item.email || "").toLowerCase() === String(email || "").toLowerCase());
+      const name = customerName(matches[0] || {}) || email;
+      const count = matches.length;
+      if (!window.confirm(`Delete ${name} (${email})? This removes their portal login and ${count} order${count === 1 ? "" : "s"}. This cannot be undone.`)) return;
+      try {
+        orderUi.openId = "";
+        applyState(await api({ action: "delete-customer", email }));
+        setStatus("Customer deleted.");
+      } catch (err) {
+        setStatus(err.message || "Could not delete the customer.");
+      }
       return;
     }
     const openOrder = e.target.closest("[data-open-order]");

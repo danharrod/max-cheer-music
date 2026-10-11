@@ -32,6 +32,18 @@ function formatOrder(order) {
   const items = (order.items || [])
     .map((i) => `- ${i.title} x${i.qty} — $${Number(i.price * i.qty).toLocaleString("en-US")}`)
     .join("\n");
+  const mixes = (order.mixes || [])
+    .map(
+      (mix, index) =>
+        [
+          `Mix ${index + 1}: ${mix.title || "Mix"}`,
+          `Team name: ${mix.teamName || ""}`,
+          `Team colors: ${mix.teamColors || ""}`,
+          `Requested date: ${mix.completionDate || ""}`,
+          `Voiceover: ${mix.voiceover || ""}`,
+        ].join("\n")
+    )
+    .join("\n\n");
   return [
     "NEW MAX CHEER MUSIC ORDER",
     "",
@@ -46,14 +58,11 @@ function formatOrder(order) {
     `Gym or school: ${order.gym || ""}`,
     `Coach: ${order.coachFirst || ""} ${order.coachLast || ""}`,
     `Email: ${order.email || ""}`,
-    `Desired completion date: ${order.completionDate || ""}`,
-    `Team name: ${order.teamName || ""}`,
-    `Team colors: ${order.teamColors || ""}`,
     "",
-    "VOICEOVER IDEAS",
-    order.voiceover || "",
+    "MIXES",
+    mixes || `Team name: ${order.teamName || ""}`,
     "",
-    "Next step reminder: customer will enter 5 songs and upload a count sheet PDF in the portal.",
+    "Next step reminder: customer will enter 5 songs and upload a count sheet PDF in the portal for each mix.",
   ].join("\n");
 }
 
@@ -69,7 +78,9 @@ async function sendWithFormSubmit(order) {
       _subject: `New mix order — ${order.gym || "MAX Cheer Music"} / ${order.teamName || ""}`.trim(),
       _replyto: order.email,
       _template: "box",
-      _autoresponse: "Thanks for your MAX Cheer Music order. Log in to the Portal with this email and the password you chose to enter your 5 songs and upload your count sheet PDF.",
+      _autoresponse: order.returningAccount
+        ? "Thanks for your MAX Cheer Music order. It is on your existing portal. Log in with the same email and password you already use."
+        : "Thanks for your MAX Cheer Music order. Log in to the Portal with this email and the password you chose to enter your 5 songs and upload your count sheet PDF.",
       name: `${order.coachFirst || ""} ${order.coachLast || ""}`.trim(),
       email: order.email,
       gym: order.gym,
@@ -123,6 +134,14 @@ module.exports = async (req, res) => {
 
   try {
     const store = await getStore();
+    const email = String(order.email || "").toLowerCase().trim();
+    const known = !!(store.users || []).find((u) => u.email === email);
+    if (!known && String(order.password || "").trim().length < 6) {
+      return res.status(400).json({
+        error: "Create a portal password with at least 6 characters. If you already ordered, use that same email.",
+      });
+    }
+    order.returningAccount = known;
     const existing = findByIdempotency(store.orders, order.idempotencyKey);
     if (existing) {
       return res.status(200).json({ ok: true, orderId: existing.id, emailed: false, duplicate: true });
@@ -147,7 +166,7 @@ module.exports = async (req, res) => {
         console.error("order email failed");
       }
     }
-    return res.status(200).json({ ok: true, orderId: saved.id, emailed });
+    return res.status(200).json({ ok: true, orderId: saved.id, emailed, returning: known });
   } catch (err) {
     const status = Number(err.status) || 502;
     if (status >= 500) console.error("order save failed");

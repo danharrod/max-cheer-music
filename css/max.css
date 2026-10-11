@@ -1000,6 +1000,32 @@ body[data-page="portal"] .song-box {
   margin-top: 12px;
   padding-top: 12px;
 }
+.portal-mix-card {
+  margin-top: 18px;
+  padding: 16px;
+  border: 1px solid #ffffff22;
+  border-radius: 4px;
+}
+.portal-mix-card h3 {
+  margin: 0 0 4px;
+  font-size: 20px;
+}
+.portal-mix-card h3 .hint { font-weight: 500; }
+.mix-fields {
+  display: grid;
+  gap: 10px;
+}
+.mix-fields label {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: #9a9a9a;
+}
+.mix-fields input,
+.mix-fields textarea { margin: 0; }
+.order-mix-block { margin-top: 14px; }
 .portal-mix.is-ready {
   border: 1px solid #2f9f5a;
   background: #0d1a12;
@@ -1180,6 +1206,18 @@ body[data-page="portal"] .song-box {
   letter-spacing: 0.06em;
   text-transform: uppercase;
 }
+.order-danger {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid #ffffff14;
+}
+.order-danger .btn { width: auto; }
+.order-danger .hint { flex-basis: 100%; margin: 0; }
+.btn.is-danger { border-color: #a33b3b; color: #ffb4b4; }
 .order-facts {
   display: grid;
   grid-template-columns: 1fr 1fr;

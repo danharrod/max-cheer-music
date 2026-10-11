@@ -40,7 +40,31 @@ function idempotencyKey() {
   return key;
 }
 
+function mixSlots(items) {
+  const slots = [];
+  for (const item of items || []) {
+    const qty = Math.max(1, Math.min(20, Math.floor(Number(item.qty) || 1)));
+    for (let n = 0; n < qty; n += 1) slots.push(item);
+  }
+  return slots;
+}
+
+function mixField(step, name) {
+  return step.querySelector(`[data-mix-field="${name}"]`)?.value.trim() || "";
+}
+
+function collectMixes(form) {
+  return [...form.querySelectorAll('[data-step="mix"]')].map((step) => ({
+    teamName: mixField(step, "teamName"),
+    teamColors: mixField(step, "teamColors"),
+    voiceover: mixField(step, "voiceover"),
+    completionDate: mixField(step, "completionDate"),
+  }));
+}
+
 function collectOrder(form, method) {
+  const mixes = collectMixes(form);
+  const first = mixes[0] || {};
   return {
     method,
     items: MaxCart.items().map((i) => ({ id: i.id, qty: i.qty })),
@@ -48,10 +72,11 @@ function collectOrder(form, method) {
     coachFirst: form.coachFirst.value.trim(),
     coachLast: form.coachLast.value.trim(),
     email: form.email.value.trim(),
-    completionDate: form.completionDate.value,
-    teamName: form.teamName.value.trim(),
-    teamColors: form.teamColors.value.trim(),
-    voiceover: form.voiceover.value.trim(),
+    completionDate: first.completionDate || "",
+    teamName: first.teamName || "",
+    teamColors: first.teamColors || "",
+    voiceover: first.voiceover || "",
+    mixes,
     password: form.password.value,
     poNumber: form.poNumber.value.trim(),
     idempotencyKey: idempotencyKey(),
@@ -60,15 +85,54 @@ function collectOrder(form, method) {
 
 function orderNote(order, items, total) {
   const names = (items || []).map((i) => `${i.title} x${i.qty}`).join(", ");
+  const teams = (order.mixes || []).map((mix) => mix.teamName).filter(Boolean).join(", ");
   return [
     `MAX Cheer Music order`,
     names,
     `Gym: ${order.gym}`,
     `Coach: ${order.coachFirst} ${order.coachLast}`,
-    `Team: ${order.teamName}`,
-    `Colors: ${order.teamColors}`,
-    `Requested date: ${order.completionDate}`,
+    `Teams: ${teams || order.teamName}`,
   ].join(" | ");
+}
+
+function renumberSteps(form) {
+  [...form.querySelectorAll(".checkout-step")].forEach((step, index) => {
+    const badge = step.querySelector(".step-index");
+    if (badge) badge.textContent = String(index + 1);
+  });
+}
+
+function buildMixSteps(form, items) {
+  const template = document.getElementById("mix-step-template");
+  const portal = form.querySelector('[data-step="portal"]');
+  if (!template || !portal) return;
+  const slots = mixSlots(items);
+  const earliest = earliestCompletionDate();
+  slots.forEach((slot, index) => {
+    const step = template.content.firstElementChild.cloneNode(true);
+    step.dataset.mixIndex = String(index);
+    const label = step.querySelector(".mix-step-label");
+    const hint = step.querySelector(".mix-step-hint");
+    if (slots.length > 1) {
+      if (label) label.textContent = slot.title || "Mix";
+      if (hint) hint.textContent = `Mix ${index + 1} of ${slots.length}. These details are only for ${slot.title || "this mix"}. The next mix is a separate step.`;
+    } else if (hint) {
+      hint.textContent = "These details are for this mix.";
+    }
+    step.querySelectorAll("[data-mix-field]").forEach((field) => {
+      const id = `mix-${index}-${field.dataset.mixField}`;
+      field.id = id;
+      const fieldLabel = step.querySelector(`label[data-for-field="${field.dataset.mixField}"]`);
+      if (fieldLabel) fieldLabel.htmlFor = id;
+    });
+    const date = step.querySelector('[data-mix-field="completionDate"]');
+    if (date) {
+      date.min = earliest;
+      date.value = earliest;
+    }
+    portal.before(step);
+  });
+  renumberSteps(form);
 }
 
 function stepFields(step) {
@@ -104,8 +168,8 @@ function stepRecap(form, step) {
     const coach = `${form.coachFirst.value.trim()} ${form.coachLast.value.trim()}`.trim();
     return [form.gym.value.trim(), coach, form.email.value.trim()].filter(Boolean).join(" · ");
   }
-  if (step.dataset.step === "team") {
-    return [form.teamName.value.trim(), form.completionDate.value, form.teamColors.value.trim()].filter(Boolean).join(" · ");
+  if (step.dataset.step === "mix") {
+    return [mixField(step, "teamName"), mixField(step, "completionDate"), mixField(step, "teamColors")].filter(Boolean).join(" · ");
   }
   if (step.dataset.step === "portal") return "Portal password is set";
   return "";
@@ -234,13 +298,10 @@ document.addEventListener("DOMContentLoaded", async () => {
   const form = document.getElementById("order-form");
   const status = document.getElementById("pay-status");
   const items = MaxCart.items();
+  if (items.length) buildMixSteps(form, items);
+  else renumberSteps(form);
   const steps = initCheckoutSteps(form);
   let submitting = false;
-  if (form.completionDate) {
-    const earliest = earliestCompletionDate();
-    form.completionDate.min = earliest;
-    if (!form.completionDate.value) form.completionDate.value = earliest;
-  }
 
   if (!items.length) {
     lines.innerHTML = `<p class="cart-empty">Your cart is empty.</p><p><a class="btn" href="shop.html">Shop mixes</a></p>`;
@@ -302,7 +363,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       <article class="checkout-thanks">
         <h2>Order received</h2>
         <p>${mailNote} ${payNote}</p>
-        <p><strong>${esc(order.gym)}</strong> · ${esc(order.teamName)} · ${money(amount)}</p>
+        <p><strong>${esc(order.gym)}</strong> · ${esc((order.mixes || []).map((mix) => mix.teamName).filter(Boolean).join(" · ") || order.teamName)} · ${money(amount)}</p>
         <p class="hint">Log in to the Portal with this email and your portal password to enter your 5 songs and upload your count sheet. Mix work starts after those are in. The date you requested is not confirmed until MAX emails you.</p>
         <p><a class="btn" href="portal.html">Open portal</a> <a class="btn btn-outline" href="sheets.html">Fill 8-count sheet</a></p>
       </article>`;

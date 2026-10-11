@@ -9,6 +9,7 @@ const {
   validCustomer,
   saveUpload,
 } = require("../lib/store");
+const { findMix, syncOrderFromMixes, songList } = require("../lib/orders");
 
 const ORDER_EMAIL = "maxcheermusic@gmail.com";
 
@@ -180,6 +181,12 @@ module.exports = async (req, res) => {
 
   const store = await getStore();
 
+  if (body.action === "has-account") {
+    const email = String(body.email || "").toLowerCase().trim();
+    const exists = !!(store.users || []).find((u) => u.email === email);
+    return res.status(200).json({ exists });
+  }
+
   if (body.action === "login") {
     const email = String(body.email || "").toLowerCase().trim();
     const user = (store.users || []).find((u) => u.email === email);
@@ -252,35 +259,58 @@ module.exports = async (req, res) => {
     return res.status(200).json(payload(user, store));
   }
 
+  if (body.action === "mix") {
+    const order = ownOrder(store, user, body.orderId);
+    if (!order) return res.status(404).json({ error: "Order not found" });
+    const mix = findMix(order, body.mixId);
+    if (!mix) return res.status(404).json({ error: "Mix not found" });
+    const date = String(body.completionDate || "").trim();
+    if (date && !/^\d{4}-\d{2}-\d{2}$/.test(date)) return res.status(400).json({ error: "Use a valid requested date." });
+    mix.teamName = String(body.teamName || "").trim().slice(0, 120);
+    mix.teamColors = String(body.teamColors || "").trim().slice(0, 120);
+    mix.voiceover = String(body.voiceover || "").trim().slice(0, 4000);
+    mix.completionDate = date.slice(0, 20);
+    syncOrderFromMixes(order);
+    const ok = await saveStore(store);
+    if (!ok) return res.status(500).json({ error: "Could not save mix details." });
+    return res.status(200).json(payload(user, store));
+  }
+
   if (body.action === "songs") {
     const order = ownOrder(store, user, body.orderId);
     if (!order) return res.status(404).json({ error: "Order not found" });
-    order.songs = [0, 1, 2, 3, 4].map((i) => String((body.songs || [])[i] || "").trim());
+    const mix = findMix(order, body.mixId);
+    if (!mix) return res.status(404).json({ error: "Mix not found" });
+    mix.songs = songList(body.songs);
+    syncOrderFromMixes(order);
     await saveStore(store);
-    const list = order.songs.map((s, i) => `${i + 1}. ${s || "(blank)"}`).join("\n");
-    await notifyPortal(order, `Song list — ${order.teamName || order.gym || "order"}`, list);
+    const list = mix.songs.map((s, i) => `${i + 1}. ${s || "(blank)"}`).join("\n");
+    await notifyPortal(order, `Song list — ${mix.teamName || mix.title || order.gym || "order"}`, list);
     return res.status(200).json(payload(user, store));
   }
 
   if (body.action === "sheet") {
     const order = ownOrder(store, user, body.orderId);
     if (!order) return res.status(404).json({ error: "Order not found" });
+    const mix = findMix(order, body.mixId);
+    if (!mix) return res.status(404).json({ error: "Mix not found" });
     if (!body.filename || !body.data) return res.status(400).json({ error: "Missing file" });
     if (!/\.pdf$/i.test(body.filename)) return res.status(400).json({ error: "Upload a PDF count sheet." });
     const buffer = Buffer.from(body.data, "base64");
     if (buffer.length > 12 * 1024 * 1024) return res.status(400).json({ error: "File is too large." });
     const saved = await saveUpload(body.filename, buffer, "sheets");
-    order.countSheet = {
+    mix.countSheet = {
       id: `sheet-${Date.now()}`,
       name: body.filename,
       url: saved.url,
       file: saved.file || saved.url,
       kind: "sheets",
     };
+    syncOrderFromMixes(order);
     await saveStore(store);
     await notifyPortal(
       order,
-      `Count sheet uploaded — ${order.teamName || order.gym || "order"}`,
+      `Count sheet uploaded — ${mix.teamName || mix.title || order.gym || "order"}`,
       `File: ${body.filename}`
     );
     return res.status(200).json(payload(user, store));
