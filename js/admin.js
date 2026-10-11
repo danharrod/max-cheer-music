@@ -137,6 +137,12 @@ function productionClass(status) {
   return "received";
 }
 
+function mixStatus(mix, order) {
+  const value = mix && mix.status;
+  if (value === "ready" || value === "review" || value === "in-progress" || value === "received") return value;
+  return productionClass(order && order.status);
+}
+
 function customerName(order) {
   return [order.coachFirst, order.coachLast].filter((part) => String(part || "").trim()).join(" ");
 }
@@ -166,6 +172,7 @@ function orderMixes(order) {
     completionDate: order.completionDate || "",
     songs: order.songs || [],
     countSheet: order.countSheet || null,
+    status: order.status || "received",
   }];
 }
 
@@ -218,16 +225,21 @@ function mixNeedsAttention(mix) {
   return !String(mix.teamName || "").trim() || !String(mix.completionDate || "").trim() || songs.length < 5 || !mix.countSheet;
 }
 
-function needsAttention(order) {
-  if (order.status === "ready") return false;
-  return orderMixes(order).some(mixNeedsAttention);
+function teamEntries() {
+  const entries = [];
+  state.orders.forEach((order) => {
+    orderMixes(order).forEach((mix, index) => {
+      entries.push({ order, mix, index, status: mixStatus(mix, order) });
+    });
+  });
+  return entries;
 }
 
-function ordersInTab(tab) {
-  return state.orders.filter((order) => {
-    if (tab === "completed") return order.status === "ready";
-    if (tab === "active") return order.status !== "ready";
-    if (tab === "attention") return needsAttention(order);
+function entriesInTab(tab) {
+  return teamEntries().filter((entry) => {
+    if (tab === "completed") return entry.status === "ready";
+    if (tab === "active") return entry.status !== "ready";
+    if (tab === "attention") return entry.status !== "ready" && mixNeedsAttention(entry.mix);
     return true;
   });
 }
@@ -247,20 +259,19 @@ function orderMatches(order, query) {
   return haystack.includes(query);
 }
 
-function sortOrders(list) {
+function sortEntries(list) {
   const rank = { received: 0, "in-progress": 1, review: 2, ready: 3 };
   return [...list].sort((a, b) => {
-    if (orderUi.sort === "gym") return String(a.gym || "").localeCompare(String(b.gym || ""), undefined, { sensitivity: "base" });
-    if (orderUi.sort === "status") return (rank[a.status] ?? 9) - (rank[b.status] ?? 9) || String(a.gym || "").localeCompare(String(b.gym || ""));
-    if (orderUi.sort === "created") return String(b.createdAt || "").localeCompare(String(a.createdAt || ""));
-    const dueOf = (order) => orderMixes(order).map((mix) => mix.completionDate).filter(Boolean).sort()[0] || "9999-99-99";
-    return dueOf(a).localeCompare(dueOf(b));
+    if (orderUi.sort === "gym") return String(a.order.gym || "").localeCompare(String(b.order.gym || ""), undefined, { sensitivity: "base" });
+    if (orderUi.sort === "status") return (rank[a.status] ?? 9) - (rank[b.status] ?? 9) || String(a.mix.teamName || "").localeCompare(String(b.mix.teamName || ""));
+    if (orderUi.sort === "created") return String(b.order.createdAt || "").localeCompare(String(a.order.createdAt || ""));
+    return String(a.mix.completionDate || "9999-99-99").localeCompare(String(b.mix.completionDate || "9999-99-99"));
   });
 }
 
-function visibleOrders() {
+function visibleEntries() {
   const query = orderUi.query.trim().toLowerCase();
-  return sortOrders(ordersInTab(orderUi.tab).filter((order) => orderMatches(order, query)));
+  return sortEntries(entriesInTab(orderUi.tab).filter((entry) => orderMatches(entry.order, query)));
 }
 
 function youtubeIdFromUrl(raw) {
@@ -341,10 +352,12 @@ function renderClips() {
     ${list}`;
 }
 
-function statusSelect(order) {
-  return `<select data-status="${esc(order.id)}" aria-label="Production status">
+function statusSelect(order, mix) {
+  const current = mixStatus(mix, order);
+  const who = mix.teamName || mix.title || "this team";
+  return `<select class="order-status-select" data-status="${esc(order.id)}" data-mix="${esc(mix.id)}" aria-label="Production status for ${esc(who)}">
     ${PRODUCTION_OPTIONS.map(
-      (option) => `<option value="${option.value}" ${order.status === option.value ? "selected" : ""}>${option.label}</option>`
+      (option) => `<option value="${option.value}" ${current === option.value ? "selected" : ""}>${option.label}</option>`
     ).join("")}
   </select>`;
 }
@@ -359,31 +372,33 @@ function mixLine(mix, index, order) {
   </span>`;
 }
 
-function orderRow(order) {
-  const due = dueFlag(order);
-  const mixes = orderMixes(order);
+function orderRow(entry) {
+  const order = entry.order;
+  const mix = entry.mix;
+  const due = entry.status === "ready" ? "" : dateFlag(mix.completionDate);
+  const team = String(mix.teamName || "").trim() || mix.title || "Team";
   return `
-    <button class="order-row${due ? ` is-${due}` : ""}" type="button" data-open-order="${esc(order.id)}">
-      <span class="order-cell" data-label="Order"><span class="order-id">${esc(order.id)}</span></span>
+    <div class="order-row${due ? ` is-${due}` : ""}">
+      <span class="order-cell" data-label="Order"><button class="order-id-btn" type="button" data-open-order="${esc(order.id)}"><span class="order-id">${esc(order.id)}</span></button></span>
       <span class="order-cell" data-label="Gym"><strong>${blank(order.gym)}</strong></span>
-      <span class="order-cell" data-label="Mixes"><span class="order-mix-lines">${mixes.map((mix, index) => mixLine(mix, index, order)).join("")}</span></span>
-      <span class="order-cell" data-label="Production"><span class="order-status ${productionClass(order.status)}">${esc(productionLabel(order.status))}</span></span>
+      <span class="order-cell" data-label="Team"><button class="order-id-btn" type="button" data-open-order="${esc(order.id)}"><strong>${esc(team)}</strong><span>${esc(mix.title || "Mix")}${due ? `<span class="order-due">${due === "overdue" ? "Overdue" : "Due within 7 days"}</span>` : ""}</span></button></span>
+      <span class="order-cell" data-label="Production">${statusSelect(order, mix)}</span>
       <span class="order-cell" data-label="Payment"><span class="order-pay ${paymentClass(order)}">${esc(paymentLabel(order))}</span></span>
-    </button>`;
+    </div>`;
 }
 
 function orderListHtml() {
   const counts = {
-    active: ordersInTab("active").length,
-    attention: ordersInTab("attention").length,
-    completed: ordersInTab("completed").length,
-    all: state.orders.length,
+    active: entriesInTab("active").length,
+    attention: entriesInTab("attention").length,
+    completed: entriesInTab("completed").length,
+    all: teamEntries().length,
   };
   const stats = [
     ["active", "In progress", counts.active],
     ["attention", "Needs attention", counts.attention],
     ["completed", "Completed", counts.completed],
-    ["all", "All orders", counts.all],
+    ["all", "All teams", counts.all],
   ]
     .map(
       ([id, label, count]) =>
@@ -391,24 +406,24 @@ function orderListHtml() {
     )
     .join("");
   const tabs = [
-    ["active", "Active orders"],
+    ["active", "Active teams"],
     ["attention", "Needs attention"],
-    ["completed", "Completed orders"],
-    ["all", "All orders"],
+    ["completed", "Completed teams"],
+    ["all", "All teams"],
   ]
     .map(
       ([id, label]) =>
         `<button type="button" class="btn ${orderUi.tab === id ? "is-on" : "btn-outline"}" data-order-tab="${id}">${label} (${counts[id]})</button>`
     )
     .join("");
-  const rows = visibleOrders();
+  const rows = visibleEntries();
   const body = !state.orders.length
     ? `<p class="hint">No orders yet.</p>`
     : !rows.length
-      ? `<p class="hint">No orders match that search.</p>`
+      ? `<p class="hint">No teams match that search.</p>`
       : `<div class="order-table">
           <div class="order-row-head">
-            <span>Order</span><span>Gym</span><span>Mixes</span><span>Production</span><span>Payment</span>
+            <span>Order</span><span>Gym</span><span>Team</span><span>Production</span><span>Payment</span>
           </div>
           ${rows.map(orderRow).join("")}
         </div>`;
@@ -425,7 +440,7 @@ function orderListHtml() {
           <option value="status" ${orderUi.sort === "status" ? "selected" : ""}>Production status</option>
         </select>
       </div>
-      <p class="hint">Open an order to work one section at a time. Unfinished orders due within 7 days are marked. Overdue orders are marked in red.</p>
+      <p class="hint">Each team is its own row. Set that team's status here. Unfinished teams due within 7 days are marked. Overdue teams are marked in red.</p>
       ${body}
     </div>`;
 }
@@ -557,7 +572,12 @@ function orderDetailHtml(order) {
       <section class="order-section">
         <h3>Production and payment</h3>
         <div class="order-facts">
-          <div class="order-fact"><span class="order-fact-label">Production status</span>${statusSelect(order)}<p class="hint">Ordered, In production, Ready for review, and Completed show on the customer portal as soon as you change them. Completed orders move to the Completed tab.</p></div>
+          ${mixes
+            .map(
+              (mix, index) =>
+                `<div class="order-fact"><span class="order-fact-label">Mix ${index + 1} · ${esc(mix.teamName || mix.title || "Mix")}</span>${statusSelect(order, mix)}<p class="hint">This status is only for this team. Ordered, In production, Ready for review, and Completed show on the customer dashboard.</p></div>`
+            )
+            .join("")}
           <div class="order-fact"><span class="order-fact-label">Payment status</span>
             <select data-payment="${esc(order.id)}" aria-label="Payment status">
               <option value="unpaid" ${order.paymentStatus === "paid" ? "" : "selected"}>Not paid</option>
@@ -590,7 +610,11 @@ function orderDetailHtml(order) {
           <p class="hint">${esc(order.id)} · ${esc(teamLabel(order) || "No team yet")}</p>
         </div>
         <p class="order-flags">
-          <span class="order-status ${productionClass(order.status)}">${esc(productionLabel(order.status))}</span>
+          ${
+            mixes.every((mix) => mixStatus(mix, order) === mixStatus(mixes[0], order))
+              ? `<span class="order-status ${productionClass(mixStatus(mixes[0], order))}">${esc(productionLabel(mixStatus(mixes[0], order)))}</span>`
+              : ""
+          }
           <span class="order-pay ${paymentClass(order)}">${esc(paymentLabel(order))}</span>
         </p>
       </div>
@@ -796,13 +820,8 @@ document.addEventListener("DOMContentLoaded", async () => {
     const status = e.target.closest("[data-status]");
     if (status) {
       try {
-        if (status.value === "ready" && orderUi.tab === "active") orderUi.tab = "completed";
-        applyState(await api({ action: "status", orderId: status.dataset.status, status: status.value }));
-        setStatus(
-          status.value === "ready"
-            ? "Marked completed. This order is now under Completed orders."
-            : "Order status updated. It now shows in the customer portal."
-        );
+        applyState(await api({ action: "status", orderId: status.dataset.status, mixId: status.dataset.mix, status: status.value }));
+        setStatus("Team status updated. It now shows on that team's row in the customer portal.");
       } catch (err) {
         setStatus(err.message);
       }

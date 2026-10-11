@@ -14,7 +14,7 @@ const BILLING = {
 };
 let portalState = null;
 let docView = null;
-const portalUi = { screen: "dashboard", filter: "all", query: "", orderId: "", tab: "overview" };
+const portalUi = { screen: "dashboard", filter: "all", query: "", orderId: "", mixId: "", tab: "overview" };
 
 function session() {
   try {
@@ -151,7 +151,7 @@ function orderFingerprint(orders) {
   return (orders || [])
     .map((o) => {
       const mixes = orderMixes(o)
-        .map((mix) => `${mix.id}:${mix.teamName}:${(mix.songs || []).join(",")}:${mix.countSheet?.id || ""}`)
+        .map((mix) => `${mix.id}:${mix.status || ""}:${mix.teamName}:${(mix.songs || []).join(",")}:${mix.countSheet?.id || ""}`)
         .join(";");
       return `${o.id}:${o.status}:${o.paymentStatus || "unpaid"}:${(o.files || []).length}:${mixes}`;
     })
@@ -171,7 +171,7 @@ function previewData() {
     orders: [
       {
         id: "ord-preview-1",
-        status: "ready",
+        status: "in-progress",
         paymentStatus: "paid",
         total: 1100,
         email: "preview@maxcheermusic.com",
@@ -187,6 +187,30 @@ function previewData() {
         voiceover: "Hit hard on the tumbling pass. Team name in the opening.",
         songs: ["Song one", "Song two", "Song three", "Song four", "Song five"],
         countSheet: { id: "sheet-preview", name: "senior-elite-counts.pdf" },
+        mixes: [
+          {
+            id: "mix-1",
+            title: "Cheer mix allstar",
+            teamName: "Senior Elite",
+            teamColors: "Black and chrome blue",
+            voiceover: "Hit hard on the tumbling pass. Team name in the opening.",
+            completionDate: "2026-10-01",
+            status: "ready",
+            songs: ["Song one", "Song two", "Song three", "Song four", "Song five"],
+            countSheet: { id: "sheet-preview", name: "senior-elite-counts.pdf" },
+          },
+          {
+            id: "mix-2",
+            title: "Cheer mix allstar",
+            teamName: "Junior Prep",
+            teamColors: "Blue",
+            voiceover: "Clean hits.",
+            completionDate: "2026-10-20",
+            status: "in-progress",
+            songs: ["", "", "", "", ""],
+            countSheet: null,
+          },
+        ],
         createdAt: "2026-09-10T12:00:00.000Z",
         files: [{ id: "file-1", name: "senior-elite-mix.mp3" }],
       },
@@ -305,6 +329,7 @@ function orderMixes(order) {
     completionDate: order.completionDate || "",
     songs: index === 0 ? order.songs || [] : [],
     countSheet: index === 0 ? order.countSheet || null : null,
+    status: order.status || "received",
   }));
 }
 
@@ -458,12 +483,33 @@ function packageName(order) {
   return items.map((item) => `${item.title || item.name || "Mix"}${Number(item.qty) > 1 ? ` ×${Number(item.qty)}` : ""}`).join(", ");
 }
 
-function listedOrders(data) {
-  return sortedOrders(data).filter((order) => {
-    if (portalUi.filter === "active") return order.status !== "ready";
-    if (portalUi.filter === "completed") return order.status === "ready";
-    return true;
-  }).filter(matchesQuery);
+function mixStatus(mix, order) {
+  const value = mix && mix.status;
+  if (value === "ready" || value === "review" || value === "in-progress" || value === "received") return value;
+  if (order?.status === "ready" || order?.status === "review" || order?.status === "in-progress") return order.status;
+  return "received";
+}
+
+function teamRows(data) {
+  const rows = [];
+  sortedOrders(data).forEach((order) => {
+    orderMixes(order).forEach((mix) => rows.push({ order, mix, status: mixStatus(mix, order) }));
+  });
+  return rows;
+}
+
+function listedTeams(data) {
+  const query = portalUi.query.trim().toLowerCase();
+  return teamRows(data)
+    .filter((row) => {
+      if (portalUi.filter === "active") return row.status !== "ready";
+      if (portalUi.filter === "completed") return row.status === "ready";
+      return true;
+    })
+    .filter((row) => {
+      if (!query) return true;
+      return [row.mix.teamName, row.mix.title, row.order.id, row.order.gym].join(" ").toLowerCase().includes(query);
+    });
 }
 
 function navKey() {
@@ -500,23 +546,24 @@ function board(body) {
   return `<section class="portal-board">${boardTop()}${body}</section>`;
 }
 
-function orderRow(order) {
+function orderRow(row) {
+  const name = String(row.mix.teamName || "").trim() || row.mix.title || "Team";
   return `
     <div class="portal-table-row">
       <div class="portal-team">
-        <strong>${esc(teamTitle(order))}</strong>
-        <small>${esc(order.id)}</small>
+        <strong>${esc(name)}</strong>
+        <small>${esc(row.order.id)}${row.mix.title ? ` · ${esc(row.mix.title)}` : ""}</small>
       </div>
-      <div><span class="portal-pill ${statusClass(order.status)}">${esc(statusLabel(order.status))}</span></div>
-      <div><button type="button" data-open-order="${esc(order.id)}">View →</button></div>
+      <div><span class="portal-pill ${statusClass(row.status)}">${esc(statusLabel(row.status))}</span></div>
+      <div><button type="button" data-open-order="${esc(row.order.id)}" data-open-mix="${esc(row.mix.id)}">View →</button></div>
     </div>`;
 }
 
 function listBody(data) {
-  const orders = data.orders || [];
-  const inProgress = orders.filter((order) => order.status !== "ready").length;
-  const completed = orders.filter((order) => order.status === "ready").length;
-  const rows = listedOrders(data);
+  const teams = teamRows(data);
+  const inProgress = teams.filter((row) => row.status !== "ready").length;
+  const completed = teams.filter((row) => row.status === "ready").length;
+  const rows = listedTeams(data);
   const title = portalUi.screen === "orders" ? "My Orders" : "My Music Orders";
   return `
     <div class="portal-title-row">
@@ -527,7 +574,7 @@ function listBody(data) {
       <button class="btn portal-new" type="button" data-new-order>New music order</button>
     </div>
     <div class="portal-stats">
-      <button type="button" data-portal-filter="all" class="${portalUi.filter === "all" ? "is-on" : ""}"><strong>${orders.length}</strong><span>Total orders</span></button>
+      <button type="button" data-portal-filter="all" class="${portalUi.filter === "all" ? "is-on" : ""}"><strong>${teams.length}</strong><span>Teams</span></button>
       <button type="button" data-portal-filter="active" class="${portalUi.filter === "active" ? "is-on" : ""}"><strong>${inProgress}</strong><span>In progress</span></button>
       <button type="button" data-portal-filter="completed" class="${portalUi.filter === "completed" ? "is-on" : ""}"><strong>${completed}</strong><span>Completed</span></button>
     </div>
@@ -538,7 +585,7 @@ function listBody(data) {
       ${
         rows.length
           ? rows.map(orderRow).join("")
-          : `<p class="hint portal-empty">${orders.length ? "No orders match that search." : "No orders on this account yet."}</p>`
+          : `<p class="hint portal-empty">${teams.length ? "No teams match that search." : "No orders on this account yet."}</p>`
       }
     </div>`;
 }
@@ -687,6 +734,8 @@ function payPanel(order) {
 function orderBody(data) {
   const order = (data.orders || []).find((item) => item.id === portalUi.orderId);
   if (!order) return listBody(data);
+  const openedMix = orderMixes(order).find((mix) => mix.id === portalUi.mixId) || orderMixes(order)[0];
+  const openedStatus = mixStatus(openedMix, order);
   const tabs = [
     ["overview", "Overview"],
     ["team", "Team details"],
@@ -704,7 +753,13 @@ function orderBody(data) {
     if (!mix.countSheet) items.push(`Mix ${index + 1} needs a count sheet`);
     return items;
   });
-  let panel = checkoutFacts(order);
+  const teamStatuses = orderMixes(order)
+    .map(
+      (mix) =>
+        `<p class="portal-team-status"><strong>${esc(mix.teamName || mix.title || "Team")}</strong> <span class="portal-pill ${statusClass(mixStatus(mix, order))}">${esc(statusLabel(mixStatus(mix, order)))}</span></p>`
+    )
+    .join("");
+  let panel = `${teamStatuses}${checkoutFacts(order)}`;
   if (tab === "overview") {
     panel += missing.length
       ? `<p class="field-label">Still needed</p><ul class="order-gaps">${missing.map((item) => `<li>${esc(item)}</li>`).join("")}</ul>`
@@ -721,10 +776,10 @@ function orderBody(data) {
     </p>
     <div class="portal-title-row">
       <div>
-        <h2>${esc(teamTitle(order))}</h2>
-        <p>${esc(order.id)} · ${esc(packageName(order))}</p>
+        <h2>${esc(openedMix?.teamName || teamTitle(order))}</h2>
+        <p>${esc(order.id)} · ${esc(openedMix?.title || packageName(order))}</p>
       </div>
-      <span class="portal-pill ${statusClass(order.status)}">${esc(statusLabel(order.status))}</span>
+      <span class="portal-pill ${statusClass(openedStatus)}">${esc(statusLabel(openedStatus))}</span>
     </div>
     <nav class="portal-links portal-tabs">
       ${tabs
@@ -832,7 +887,10 @@ document.addEventListener("DOMContentLoaded", async () => {
     const nav = e.target.closest("[data-portal-nav]");
     if (nav) {
       portalUi.screen = nav.dataset.portalNav || "dashboard";
-      if (portalUi.screen !== "order") portalUi.orderId = "";
+      if (portalUi.screen !== "order") {
+        portalUi.orderId = "";
+        portalUi.mixId = "";
+      }
       render(portalState);
       return;
     }
@@ -852,6 +910,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     const openOrder = e.target.closest("[data-open-order]");
     if (openOrder) {
       portalUi.orderId = openOrder.dataset.openOrder;
+      portalUi.mixId = openOrder.dataset.openMix || "";
       portalUi.screen = "order";
       portalUi.tab = "overview";
       render(portalState);

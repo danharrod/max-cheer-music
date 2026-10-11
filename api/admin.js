@@ -415,7 +415,7 @@ module.exports = async (req, res) => {
       const store = await getStore();
       const order = findOrder(store, body.orderId);
       if (!order) return res.status(404).json({ error: "Order not found" });
-      setProductionStatus(order, body.status);
+      setProductionStatus(order, body.status, body.mixId);
       const ok = await saveStore(store);
       if (!ok) return res.status(500).json({ error: "Could not save status." });
       return res.status(200).json(adminPayload(store));

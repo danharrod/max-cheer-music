@@ -496,4 +496,19 @@ test("existing production statuses stay valid and review is available", () => {
   assert.equal(review.status, "review");
   assert.equal(review.productionStatus, "review");
   assert.throws(() => setProductionStatus(review, "done"), /Invalid status/);
+  const split = normalizeOrder({
+    id: "two",
+    status: "received",
+    mixes: [
+      { id: "mix-1", teamName: "Warhawks", title: "Allstar" },
+      { id: "mix-2", teamName: "Phoenix", title: "School" },
+    ],
+  });
+  setProductionStatus(split, "in-progress", "mix-1");
+  assert.equal(split.mixes[0].status, "in-progress");
+  assert.equal(split.mixes[1].status, "received");
+  assert.equal(split.status, "received");
+  setProductionStatus(split, "ready", "mix-1");
+  setProductionStatus(split, "ready", "mix-2");
+  assert.equal(split.status, "ready");
 });
