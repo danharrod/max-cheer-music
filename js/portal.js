@@ -324,6 +324,7 @@ function orderMixes(order) {
     id: `mix-${index + 1}`,
     title: item.title || item.name || "Mix",
     teamName: index === 0 ? order.teamName || "" : "",
+    teamLevel: index === 0 ? order.teamLevel || "" : "",
     teamColors: index === 0 ? order.teamColors || "" : "",
     voiceover: index === 0 ? order.voiceover || "" : "",
     completionDate: order.completionDate || "",
@@ -422,7 +423,6 @@ function documentHtml(order, kind, data) {
         </div>
         <div class="doc-meta">
           <p class="doc-kind">${quote ? "Quote" : "Invoice"}</p>
-          <p><span>Number</span> ${esc(order.id)}</p>
           <p><span>Order submitted</span> ${esc(formatStamp(order.createdAt))}</p>
           ${
             quote
@@ -551,7 +551,7 @@ function orderRow(row) {
     <div class="portal-table-row">
       <div class="portal-team">
         <strong>${esc(name)}</strong>
-        <small>${esc(row.order.id)}${row.mix.title ? ` · ${esc(row.mix.title)}` : ""}</small>
+        ${row.mix.title ? `<small>${esc(row.mix.title)}</small>` : ""}
       </div>
       <div><span class="portal-pill ${statusClass(row.status)}">${esc(statusLabel(row.status))}</span></div>
       <div><button type="button" data-open-order="${esc(row.order.id)}" data-open-mix="${esc(row.mix.id)}">View →</button></div>
@@ -614,7 +614,7 @@ function quotesBody(data) {
                 <article class="portal-doc-row">
                   <div class="portal-team">
                     <strong>${esc(teamTitle(order))}</strong>
-                    <small>${esc(order.id)} · ${isPaid(order) ? "Paid" : "Not paid"}</small>
+                    <small>${isPaid(order) ? "Paid" : "Not paid"}</small>
                   </div>
                   <p class="portal-doc-links">
                     <button type="button" data-doc="quote" data-order="${esc(order.id)}">Quote</button>
@@ -656,6 +656,7 @@ function teamPanel(order) {
           <h3>${esc(mix.title || "Mix")}${list.length > 1 ? ` <span class="hint">Mix ${index + 1} of ${list.length}</span>` : ""}</h3>
           <div class="mix-fields">
             <label>Team name<input data-mix-field="teamName" value="${esc(mix.teamName || "")}" /></label>
+            <label>Team type and level<input data-mix-field="teamLevel" value="${esc(mix.teamLevel || "")}" placeholder="Senior Coed Level 4" /></label>
             <label>Team colors<input data-mix-field="teamColors" value="${esc(mix.teamColors || "")}" /></label>
             <label>Requested date<input data-mix-field="completionDate" type="date" value="${esc(mix.completionDate || "")}" /></label>
             <label>Voiceover ideas<textarea data-mix-field="voiceover">${esc(mix.voiceover || "")}</textarea></label>
@@ -776,7 +777,7 @@ function orderBody(data) {
     <div class="portal-title-row">
       <div>
         <h2>${esc(openedMix?.teamName || teamTitle(order))}</h2>
-        <p>${esc(order.id)} · ${esc(openedMix?.title || packageName(order))}</p>
+        <p>${esc(openedMix?.title || packageName(order))}</p>
       </div>
       <span class="portal-pill ${statusClass(openedStatus)}">${esc(statusLabel(openedStatus))}</span>
     </div>
@@ -861,6 +862,7 @@ function readMix(orderId, mixId) {
   const value = (name) => card?.querySelector(`[data-mix-field="${name}"]`)?.value.trim() || "";
   return {
     teamName: value("teamName"),
+    teamLevel: value("teamLevel"),
     teamColors: value("teamColors"),
     voiceover: value("voiceover"),
     completionDate: value("completionDate"),
@@ -1075,31 +1077,42 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (resetForm) resetForm.hidden = true;
   }
 
+  async function requestReset(email, note) {
+    if (note) note.textContent = "Sending…";
+    try {
+      const res = await fetch("/api/portal", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "request-reset", email }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (note) note.textContent = data.message || "If that email has a portal account, we sent a reset link.";
+    } catch {
+      if (note) note.textContent = "Could not send a reset link. Try again, or create access at checkout.";
+    }
+  }
+
   document.getElementById("portal-forgot")?.addEventListener("click", () => {
+    const email = String(form.email?.value || "").trim();
     form.hidden = true;
     if (resetForm) resetForm.hidden = true;
-    if (requestForm) {
-      requestForm.hidden = false;
-      requestForm.email?.focus();
+    if (!requestForm) return;
+    requestForm.hidden = false;
+    if (requestForm.email) requestForm.email.value = email;
+    const note = document.getElementById("reset-request-status");
+    if (email && requestForm.email?.checkValidity()) {
+      requestReset(email, note);
+      return;
     }
+    if (note) note.textContent = "";
+    requestForm.email?.focus();
   });
   document.getElementById("portal-reset-back")?.addEventListener("click", showLogin);
 
   requestForm?.addEventListener("submit", async (e) => {
     e.preventDefault();
     const note = document.getElementById("reset-request-status");
-    note.textContent = "Sending…";
-    try {
-      const res = await fetch("/api/portal", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "request-reset", email: requestForm.email.value }),
-      });
-      const data = await res.json().catch(() => ({}));
-      note.textContent = data.message || "If that email has a portal account, we sent a reset link.";
-    } catch {
-      note.textContent = "Could not send a reset link. Try again, or create access at checkout.";
-    }
+    await requestReset(requestForm.email.value, note);
   });
 
   if (resetToken && resetForm) {

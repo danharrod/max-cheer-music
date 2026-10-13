@@ -51,6 +51,13 @@ function skipMail() {
   return process.env.MAX_SKIP_EMAILS === "1" || process.env.MAX_TEST_STORE === "1";
 }
 
+function siteOrigin(req) {
+  const origin = String(req.headers?.origin || "").replace(/\/$/, "");
+  if (/^https:\/\/(www\.)?maxcheermusic\.com$/i.test(origin)) return "https://maxcheermusic.com";
+  if (/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(origin)) return origin;
+  return "https://maxcheermusic.com";
+}
+
 async function sendResetEmail(to, link) {
   const text = [
     "Reset your MAX Cheer Music portal password:",
@@ -73,17 +80,29 @@ async function sendResetEmail(to, link) {
         text,
       }),
     });
-    if (!res.ok) throw new Error("reset email failed");
-    return;
+    if (res.ok) return;
+    console.error("reset resend failed", res.status);
   }
-  await fetch(`https://formsubmit.co/ajax/${encodeURIComponent(to)}`, {
+  const res = await fetch(`https://formsubmit.co/ajax/${ORDER_EMAIL}`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Accept: "application/json" },
     body: JSON.stringify({
+      _captcha: false,
+      _template: "box",
       _subject: "Reset your MAX Cheer Music portal password",
+      _replyto: to,
+      _autoresponse: text,
+      name: "Portal password reset",
+      email: to,
       message: text,
     }),
   });
+  const data = await res.json().catch(() => ({}));
+  const success = data.success === true || data.success === "true";
+  if (!res.ok || !success) {
+    console.error("reset formsubmit failed", res.status);
+    throw new Error("reset email failed");
+  }
 }
 
 function hashResetToken(token) {
@@ -208,8 +227,7 @@ module.exports = async (req, res) => {
     user.resetTokenHash = hashResetToken(raw);
     user.resetTokenExp = Date.now() + 60 * 60 * 1000;
     await saveStore(store);
-    const origin = String(req.headers.origin || "https://maxcheermusic.com").replace(/\/$/, "");
-    const link = `${origin}/portal.html?reset=${raw}`;
+    const link = `${siteOrigin(req)}/portal?reset=${raw}`;
     if (!skipMail()) {
       try {
         await sendResetEmail(user.email, link);
@@ -267,6 +285,7 @@ module.exports = async (req, res) => {
     const date = String(body.completionDate || "").trim();
     if (date && !/^\d{4}-\d{2}-\d{2}$/.test(date)) return res.status(400).json({ error: "Use a valid requested date." });
     mix.teamName = String(body.teamName || "").trim().slice(0, 120);
+    mix.teamLevel = String(body.teamLevel || "").trim().slice(0, 120);
     mix.teamColors = String(body.teamColors || "").trim().slice(0, 120);
     mix.voiceover = String(body.voiceover || "").trim().slice(0, 4000);
     mix.completionDate = date.slice(0, 20);
@@ -320,3 +339,4 @@ module.exports = async (req, res) => {
 };
 
 module.exports.upsertUser = upsertUser;
+module.exports.sendResetEmail = sendResetEmail;

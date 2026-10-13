@@ -56,6 +56,7 @@ function mixField(step, name) {
 function collectMixes(form) {
   return [...form.querySelectorAll('[data-step="mix"]')].map((step) => ({
     teamName: mixField(step, "teamName"),
+    teamLevel: mixField(step, "teamLevel"),
     teamColors: mixField(step, "teamColors"),
     voiceover: mixField(step, "voiceover"),
     completionDate: mixField(step, "completionDate"),
@@ -74,6 +75,7 @@ function collectOrder(form, method) {
     email: form.email.value.trim(),
     completionDate: first.completionDate || "",
     teamName: first.teamName || "",
+    teamLevel: first.teamLevel || "",
     teamColors: first.teamColors || "",
     voiceover: first.voiceover || "",
     mixes,
@@ -169,7 +171,7 @@ function stepRecap(form, step) {
     return [form.gym.value.trim(), coach, form.email.value.trim()].filter(Boolean).join(" · ");
   }
   if (step.dataset.step === "mix") {
-    return [mixField(step, "teamName"), mixField(step, "completionDate"), mixField(step, "teamColors")].filter(Boolean).join(" · ");
+    return [mixField(step, "teamName"), mixField(step, "teamLevel"), mixField(step, "completionDate"), mixField(step, "teamColors")].filter(Boolean).join(" · ");
   }
   if (step.dataset.step === "portal") return "Portal password is set";
   return "";

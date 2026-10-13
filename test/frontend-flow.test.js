@@ -80,6 +80,45 @@ test("returning checkout does not overwrite portal password", async () => {
   assert.notEqual(hashPassword("second-password", user.salt), user.passwordHash);
 });
 
+test("password reset email goes to the customer through the shop inbox", async () => {
+  const calls = [];
+  const original = global.fetch;
+  global.fetch = async (url, opts) => {
+    calls.push({ url: String(url), body: JSON.parse(opts.body) });
+    return { ok: true, status: 200, json: async () => ({ success: true }) };
+  };
+  try {
+    await portal.sendResetEmail("coach@example.com", "https://maxcheermusic.com/portal?reset=abc");
+  } finally {
+    global.fetch = original;
+  }
+  assert.equal(calls.length, 1);
+  assert.match(calls[0].url, /formsubmit\.co\/ajax\/maxcheermusic@gmail\.com$/);
+  assert.equal(calls[0].body.email, "coach@example.com");
+  assert.match(calls[0].body._autoresponse, /https:\/\/maxcheermusic\.com\/portal\?reset=abc/);
+  assert.equal(calls[0].body._captcha, false);
+});
+
+test("password reset falls back when direct mail cannot be delivered", async () => {
+  process.env.RESEND_API_KEY = "test-key";
+  const urls = [];
+  const original = global.fetch;
+  global.fetch = async (url) => {
+    urls.push(String(url));
+    if (String(url).includes("resend.com")) return { ok: false, status: 403, json: async () => ({}) };
+    return { ok: true, status: 200, json: async () => ({ success: "true" }) };
+  };
+  try {
+    await portal.sendResetEmail("coach@example.com", "https://maxcheermusic.com/portal?reset=abc");
+  } finally {
+    global.fetch = original;
+    delete process.env.RESEND_API_KEY;
+  }
+  assert.equal(urls.length, 2);
+  assert.match(urls[0], /api\.resend\.com\/emails/);
+  assert.match(urls[1], /formsubmit\.co\/ajax\/maxcheermusic@gmail\.com$/);
+});
+
 test("password reset works without revealing missing emails", async () => {
   const missing = await call(portal, { action: "request-reset", email: "nobody@example.com" });
   assert.equal(missing.statusCode, 200);
@@ -246,7 +285,7 @@ test("each mix keeps its own team details and license fields", async () => {
     coachLast: "Lee",
     items: [{ id: "school", qty: 1 }, { id: "allstar", qty: 1 }],
     mixes: [
-      { teamName: "Cougars", teamColors: "Blue", voiceover: "Loud", completionDate: "2026-12-01" },
+      { teamName: "Cougars", teamLevel: "Senior Coed Level 4", teamColors: "Blue", voiceover: "Loud", completionDate: "2026-12-01" },
       { teamName: "Elite", teamColors: "Gold", voiceover: "Hits", completionDate: "2026-12-15" },
     ],
   });
@@ -254,6 +293,8 @@ test("each mix keeps its own team details and license fields", async () => {
   const saved = (await getStore()).orders.find((order) => order.id === placed.body.orderId);
   assert.equal(saved.mixes.length, 2);
   assert.equal(saved.mixes[0].teamName, "Cougars");
+  assert.equal(saved.mixes[0].teamLevel, "Senior Coed Level 4");
+  assert.equal(saved.mixes[1].teamLevel, "");
   assert.equal(saved.mixes[0].title, "School Mix");
   assert.equal(saved.mixes[1].teamName, "Elite");
   assert.equal(saved.mixes[1].title, "Allstar Mix");
@@ -327,6 +368,8 @@ test("shop and checkout copy match the real flow", () => {
   assert.match(checkout, /Place order and open PayPal/);
   assert.match(checkout, /not a confirmed deadline/i);
   assert.match(checkout, /does not mark the order paid/i);
+  assert.match(checkout, /Senior Coed Level 4/);
+  assert.match(checkout, /data-mix-field="teamLevel"/);
   assert.match(checkout, /data-step="contact"/);
   assert.match(checkout, /data-step="payment"/);
   assert.match(checkout, /class="btn step-next"/);

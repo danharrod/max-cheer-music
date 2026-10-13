@@ -38,6 +38,7 @@ function formatOrder(order) {
         [
           `Mix ${index + 1}: ${mix.title || "Mix"}`,
           `Team name: ${mix.teamName || ""}`,
+          `Team type and level: ${mix.teamLevel || ""}`,
           `Team colors: ${mix.teamColors || ""}`,
           `Requested date: ${mix.completionDate || ""}`,
           `Voiceover: ${mix.voiceover || ""}`,

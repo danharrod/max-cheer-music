@@ -167,6 +167,7 @@ function orderMixes(order) {
     id: "mix-1",
     title: packageName(order) || "Mix",
     teamName: order.teamName || "",
+    teamLevel: order.teamLevel || "",
     teamColors: order.teamColors || "",
     voiceover: order.voiceover || "",
     completionDate: order.completionDate || "",
@@ -462,6 +463,7 @@ function mixDetailHtml(mix, index, total) {
       <div class="order-facts">
         ${fact("Requested completion date", blank(formatWhen(mix.completionDate, true) || mix.completionDate))}
         ${fact("Team name", blank(mix.teamName))}
+        ${fact("Team type and level", blank(mix.teamLevel))}
         ${fact("Team colors", blank(mix.teamColors))}
         ${fact("Voiceover ideas", blank(mix.voiceover), true)}
       </div>
