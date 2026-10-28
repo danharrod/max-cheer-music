@@ -449,10 +449,13 @@ function orderListHtml() {
     </div>`;
 }
 
-function fileBlock(order, file, label) {
+function fileBlock(order, file, label, options = {}) {
   const href = fileHref(order.id, file.id);
   const audio = isAudioName(file.name) ? `<audio controls src="${esc(href)}"></audio>` : "";
-  return `<div class="order-file"><p class="order-fact-label">${esc(label)}</p><p><a href="${esc(href)}">${esc(file.name)}</a></p>${audio}</div>`;
+  const remove = options.canDelete
+    ? `<p><button class="btn btn-outline is-danger" type="button" data-delete-file="${esc(file.id)}" data-order-id="${esc(order.id)}">Delete mix</button></p>`
+    : "";
+  return `<div class="order-file"><p class="order-fact-label">${esc(label)}</p><p><a href="${esc(href)}">${esc(file.name)}</a></p>${audio}${remove}</div>`;
 }
 
 function mixDetailHtml(mix, index, total) {
@@ -486,7 +489,7 @@ function orderDetailHtml(order) {
   const mixes = orderMixes(order);
   const files = [...(order.files || [])].reverse();
   const fileHtml = files.length
-    ? files.map((file) => fileBlock(order, file, "Finished mix")).join("")
+    ? files.map((file) => fileBlock(order, file, "Finished mix", { canDelete: true })).join("")
     : `<p class="hint">No mix uploaded yet.</p>`;
   const payments = (order.payments || [])
     .map((payment) => `<li>${esc(payMethodLabel(payment.method))} · $${Number(payment.amount || 0).toLocaleString("en-US")}${payment.reference ? ` · ${esc(payment.reference)}` : ""}${payment.date ? ` · ${esc(payment.date)}` : ""}</li>`)
@@ -568,8 +571,8 @@ function orderDetailHtml(order) {
         <h3>Files</h3>
         ${sheets}
         ${fileHtml}
-        <label for="mix-${esc(order.id)}">Upload or replace finished mix</label>
-        <p class="hint">Uploading adds the file to this order. Each team keeps its own status. Earlier files stay attached. The newest mix shows in the customer portal.</p>
+        <label for="mix-${esc(order.id)}">Upload finished mix</label>
+        <p class="hint">Uploading adds the file to this order. Delete any uploaded mix below. The newest remaining mix shows in the customer portal.</p>
         <input id="mix-${esc(order.id)}" data-attach="${esc(order.id)}" type="file" accept="audio/*,.zip,.mp3,.wav,.m4a,.mpeg" />
       </section>`;
   } else {
@@ -914,6 +917,23 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (e.target.closest("[data-order-back]")) {
       orderUi.openId = "";
       renderOrders();
+      return;
+    }
+    const deleteFile = e.target.closest("[data-delete-file]");
+    if (deleteFile) {
+      const orderId = deleteFile.dataset.orderId;
+      const fileId = deleteFile.dataset.deleteFile;
+      const order = state.orders.find((item) => item.id === orderId);
+      const file = (order?.files || []).find((item) => item.id === fileId);
+      const name = file?.name || "this mix";
+      if (!window.confirm(`Delete ${name} from this order? Customers will no longer see it in the portal.`)) return;
+      try {
+        setStatus("Deleting mix…");
+        applyState(await api({ action: "file-delete", orderId, fileId }));
+        setStatus("Mix deleted.");
+      } catch (err) {
+        setStatus(err.message || "Could not delete the mix.");
+      }
       return;
     }
     const deleteOrder = e.target.closest("[data-delete-order]");

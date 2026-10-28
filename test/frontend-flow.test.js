@@ -274,6 +274,78 @@ test("admin mix attach by url shows on the customer order", async () => {
   assert.equal(pub.status, "ready");
 });
 
+test("admin can delete an uploaded finished mix", async () => {
+  const adminApi = require("../api/admin");
+  const login = await call(adminApi, { action: "login", password: "test-admin-pass", token: "" });
+  assert.equal(login.statusCode, 200);
+  const placed = await call(orderApi, {
+    method: "paypal",
+    idempotencyKey: "mix-delete-key-1",
+    email: "mix-delete@example.com",
+    password: "portal1",
+    gym: "Delete Mix Gym",
+    coachFirst: "Pat",
+    coachLast: "Lee",
+    teamName: "Delete Mix Team",
+    teamColors: "Red",
+    voiceover: "Hits",
+    completionDate: "2026-11-15",
+    items: [{ id: "school", qty: 1 }],
+  });
+  assert.equal(placed.statusCode, 200);
+  const attached = await call(adminApi, {
+    action: "attach",
+    token: login.body.token,
+    orderId: placed.body.orderId,
+    filename: "keep-me.mp3",
+    url: "https://example.com/keep-me.mp3",
+  });
+  assert.equal(attached.statusCode, 200);
+  const second = await call(adminApi, {
+    action: "attach",
+    token: login.body.token,
+    orderId: placed.body.orderId,
+    filename: "remove-me.mp3",
+    url: "https://example.com/remove-me.mp3",
+  });
+  assert.equal(second.statusCode, 200);
+  const before = (second.body.orders || []).find((o) => o.id === placed.body.orderId);
+  assert.equal(before.files.length, 2);
+  const removeId = before.files.find((f) => f.name === "remove-me.mp3").id;
+
+  const deleted = await call(adminApi, {
+    action: "file-delete",
+    token: login.body.token,
+    orderId: placed.body.orderId,
+    fileId: removeId,
+  });
+  assert.equal(deleted.statusCode, 200);
+  const after = (deleted.body.orders || []).find((o) => o.id === placed.body.orderId);
+  assert.equal(after.files.length, 1);
+  assert.equal(after.files[0].name, "keep-me.mp3");
+
+  const { publicOrder } = require("../lib/store");
+  const saved = (await getStore()).orders.find((o) => o.id === placed.body.orderId);
+  assert.equal(saved.files.length, 1);
+  assert.equal(saved.files[0].name, "keep-me.mp3");
+  assert.ok((saved.activity || []).some((entry) => entry.action === "file-delete"));
+  const pub = publicOrder(saved);
+  assert.equal(pub.files.length, 1);
+  assert.equal(pub.files[0].name, "keep-me.mp3");
+
+  const missing = await call(adminApi, {
+    action: "file-delete",
+    token: login.body.token,
+    orderId: placed.body.orderId,
+    fileId: removeId,
+  });
+  assert.equal(missing.statusCode, 404);
+
+  const adminJs = fs.readFileSync(path.join(__dirname, "..", "js/admin.js"), "utf8");
+  assert.match(adminJs, /data-delete-file=/);
+  assert.match(adminJs, /action: "file-delete"/);
+});
+
 test("each mix keeps its own team details and license fields", async () => {
   const placed = await call(orderApi, {
     method: "paypal",

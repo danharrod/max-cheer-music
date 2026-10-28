@@ -414,6 +414,31 @@ module.exports = async (req, res) => {
       return res.status(200).json(adminPayload(store));
     }
 
+    if (action === "file-delete") {
+      const store = await getStore();
+      const order = findOrder(store, body.orderId);
+      if (!order) return res.status(404).json({ error: "Order not found" });
+      const fileId = String(body.fileId || "").trim();
+      if (!fileId) return res.status(400).json({ error: "Missing file" });
+      order.files = Array.isArray(order.files) ? order.files : [];
+      const removed = order.files.find((f) => f.id === fileId);
+      if (!removed) return res.status(404).json({ error: "Mix file not found" });
+      order.files = order.files.filter((f) => f.id !== fileId);
+      order.activity = Array.isArray(order.activity) ? order.activity : [];
+      order.activity.push(activity("file-delete", `Removed finished mix ${removed.name || fileId}`));
+      if (removed.url && process.env.BLOB_READ_WRITE_TOKEN && !process.env.MAX_TEST_STORE) {
+        try {
+          const { del } = require("@vercel/blob");
+          await del(removed.url, { token: process.env.BLOB_READ_WRITE_TOKEN });
+        } catch (err) {
+          console.error("mix blob delete failed", err && err.message);
+        }
+      }
+      const ok = await saveStore(store);
+      if (!ok) return res.status(500).json({ error: "Could not delete the mix." });
+      return res.status(200).json(adminPayload(store));
+    }
+
     if (action === "status") {
       const store = await getStore();
       const order = findOrder(store, body.orderId);
